@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bayesian-pricing"
+version = "0.1.0"
+description = "Hierarchical Bayesian models for insurance pricing thin-data segments"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Burning Cost", email = "pricing.frontier@gmail.com" },
+]
+keywords = [
+    "insurance",
+    "pricing",
+    "bayesian",
+    "hierarchical",
+    "credibility",
+    "actuarial",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "arviz>=0.17",
+]
+
+[project.optional-dependencies]
+pymc = [
+    "pymc>=5.0",
+]
+numpyro = [
+    "numpyro>=0.13",
+    "jax>=0.4",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "pymc>=5.0",
+    "arviz>=0.17",
+]
+
+[project.urls]
+Homepage = "https://github.com/burningcost/bayesian-pricing"
+Repository = "https://github.com/burningcost/bayesian-pricing"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bayesian_pricing"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "pymc: tests that require PyMC to be installed",
+]
