@@ -20,13 +20,13 @@ Under Normal-Normal conjugacy, partial pooling is exactly Bühlmann-Straub credi
 ## Install
 
 ```bash
-uv pip install "bayesian-pricing[pymc]"
+uv add "bayesian-pricing[pymc]"
 ```
 
 PyMC 5.x is an optional dependency - it is not pulled in by default because it has C++ compiler requirements on some platforms. The `[pymc]` extra handles this. For GPU-accelerated inference on large portfolios:
 
 ```bash
-uv pip install "bayesian-pricing[numpyro]"
+uv add "bayesian-pricing[numpyro]"
 ```
 
 ## Usage
@@ -99,7 +99,7 @@ print(thin)
 
 # Export for Excel / rate system import
 summary_df = rel.summary()  # long format: factor, level, relativity, CI, credibility
-summary_df.to_csv("bayesian_relativities.csv", index=False)
+summary_df.write_csv("bayesian_relativities.csv")
 ```
 
 ## Severity model
