@@ -20,13 +20,13 @@ Under Normal-Normal conjugacy, partial pooling is exactly Bühlmann-Straub credi
 ## Install
 
 ```bash
-pip install bayesian-pricing[pymc]
+uv pip install "bayesian-pricing[pymc]"
 ```
 
 PyMC 5.x is an optional dependency — it is not pulled in by default because it has C++ compiler requirements on some platforms. The `[pymc]` extra handles this. For GPU-accelerated inference on large portfolios:
 
 ```bash
-pip install bayesian-pricing[numpyro]
+uv pip install "bayesian-pricing[numpyro]"
 ```
 
 ## Usage
@@ -34,12 +34,12 @@ pip install bayesian-pricing[numpyro]
 Input is segment-level sufficient statistics — one row per rating cell, with exposure and claim count. This is the practical production design: aggregate your book to rating cells first, then run the model. A book with 500k policies typically has 5,000–20,000 non-empty rating cells. The model operates on those cells, making NUTS feasible on a standard machine.
 
 ```python
-import pandas as pd
+import polars as pl
 from bayesian_pricing import HierarchicalFrequency, BayesianRelativities
 from bayesian_pricing.frequency import SamplerConfig
 
 # One row per rating cell
-df = pd.DataFrame({
+df = pl.DataFrame({
     "veh_group":  ["Supermini", "Supermini", "Sports", "Sports", "Saloon"],
     "age_band":   ["17-21", "31-40", "17-21", "31-40", "31-40"],
     "claims":     [8, 120, 3, 45, 200],
