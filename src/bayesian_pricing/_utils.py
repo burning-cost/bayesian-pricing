@@ -19,7 +19,7 @@ def _check_pymc() -> None:
             "PyMC requires C++ compiler tools on some platforms. See:\n"
             "    https://www.pymc.io/projects/docs/en/stable/installation.html\n\n"
             "For GPU acceleration (large portfolios), install with NumPyro backend:\n"
-            "    pip install bayesian-pricing[numpyro]"
+            "    uv pip install bayesian-pricing[numpyro]"
         )
 
 

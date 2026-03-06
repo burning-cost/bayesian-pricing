@@ -1,17 +1,17 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Hierarchical Bayesian Frequency Model — UK Motor Insurance Demo
+# MAGIC # Hierarchical Bayesian Frequency Model - UK Motor Insurance Demo
 # MAGIC
 # MAGIC This notebook demonstrates `bayesian-pricing` on a synthetic UK motor portfolio.
 # MAGIC
 # MAGIC **The problem**: You have a motor book with 500k policies across vehicle groups,
-# MAGIC age bands, and areas. Most rating cells are sparse — fewer than 30 observations.
+# MAGIC age bands, and areas. Most rating cells are sparse - fewer than 30 observations.
 # MAGIC Standard GLMs either overfit (saturated model) or pool everything indiscriminately
 # MAGIC (main-effects only). Neither gives you calibrated estimates for thin cells.
 # MAGIC
 # MAGIC **The solution**: Hierarchical Bayesian model with partial pooling. Thin segments
 # MAGIC borrow strength from related segments via a shared population distribution.
-# MAGIC The degree of borrowing is data-driven — set by the posterior, not hand-tuned.
+# MAGIC The degree of borrowing is data-driven - set by the posterior, not hand-tuned.
 # MAGIC
 # MAGIC **What you will see**:
 # MAGIC 1. Data generation: realistic UK motor segments with known true relativities
@@ -71,7 +71,7 @@ BASE_FREQ = 0.09  # 9% annual claim frequency (UK motor attritional)
 
 # Vehicle groups (analogous to ABI groups, simplified)
 VEH_GROUPS = {
-    "Supermini":     -0.20,  # VW Polo, Ford Fiesta — low frequency
+    "Supermini":     -0.20,  # VW Polo, Ford Fiesta - low frequency
     "Hatchback":     -0.05,  # Golf, Focus
     "Saloon":         0.00,  # Base category
     "SUV":            0.10,  # Higher theft, parking claims
@@ -82,14 +82,14 @@ VEH_GROUPS = {
 
 # Driver age bands
 AGE_BANDS = {
-    "17-21":  0.85,   # 2.3x base — super-additive with sports cars
+    "17-21":  0.85,   # 2.3x base - super-additive with sports cars
     "22-25":  0.45,   # 1.6x base
     "26-30":  0.20,   # 1.2x base
     "31-40":  0.00,   # Base category
     "41-50": -0.05,
     "51-60": -0.10,
     "61-70": -0.05,
-    "71+":    0.15,   # Higher frequency again — cognitive decline
+    "71+":    0.15,   # Higher frequency again - cognitive decline
 }
 
 
@@ -306,7 +306,7 @@ print(f"\nSummary: {ppc['_summary']['interpretation']}")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 5. Relativities — Rate Table Format
+# MAGIC ## 5. Relativities - Rate Table Format
 # MAGIC
 # MAGIC This is what the pricing actuary actually needs: a table of multiplicative
 # MAGIC factors per rating variable, with credible intervals.
@@ -491,7 +491,7 @@ print("Segments near the diagonal: trusted own data (correct for dense segments)
 # Generate severity data consistent with our frequency data
 from tests.conftest import sev_segment_data  # for demo purposes we re-generate here
 
-# Severity: varies by vehicle group only (not age band — repair cost is similar across ages)
+# Severity: varies by vehicle group only (not age band - repair cost is similar across ages)
 SEV_VEH = {
     "Supermini": -0.05,
     "Hatchback":  0.00,
@@ -598,7 +598,7 @@ display(pp_table[["level", "relativity_freq", "relativity_sev",
 # MAGIC - Model is fitted on segment-level sufficient statistics. Within-segment heterogeneity
 # MAGIC   is not modelled.
 # MAGIC - Convergence must be checked (R-hat, ESS, divergences) before using results.
-# MAGIC - Pathfinder is faster but approximate — use NUTS for final production estimates.
+# MAGIC - Pathfinder is faster but approximate - use NUTS for final production estimates.
 # MAGIC - The Gamma likelihood assumes attritional claims only. Large claims (BI, total loss)
 # MAGIC   need separate treatment.
 
