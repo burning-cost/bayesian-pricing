@@ -276,10 +276,12 @@ class HierarchicalSeverity:
             # mu^2 / (shape * n). We model this by scaling the effective shape.
             effective_shape = gamma_shape * weights
 
+            # PyMC 5 Gamma: use alpha/beta parameterization
+            # alpha = concentration (shape), beta = concentration/mean (rate)
             _ = pm.Gamma(
                 "severity",
-                mu=mu_severity,
                 alpha=effective_shape,
+                beta=effective_shape / mu_severity,
                 observed=observed_severity,
             )
 
@@ -297,13 +299,28 @@ class HierarchicalSeverity:
                     progressbar=True,
                     return_inferencedata=True,
                 )
-            else:
-                idata = pm.fit(
-                    method="pathfinder",
-                    draws=sampler_config.draws,
-                    random_seed=sampler_config.random_seed,
-                    progressbar=True,
-                )
+            else:  # pathfinder (or advi fallback)
+                try:
+                    idata = pm.fit(
+                        method="pathfinder",
+                        draws=sampler_config.draws,
+                        random_seed=sampler_config.random_seed,
+                        progressbar=True,
+                    )
+                except (KeyError, ValueError):
+                    import warnings
+                    warnings.warn(
+                        "pathfinder not available in this PyMC installation; "
+                        "falling back to ADVI. Upgrade to PyMC>=5.3 for pathfinder.",
+                        stacklevel=3,
+                    )
+                    approx = pm.fit(
+                        n=20_000,
+                        method="advi",
+                        random_seed=sampler_config.random_seed,
+                        progressbar=False,
+                    )
+                    idata = approx.sample(sampler_config.draws)
 
             idata = pm.sample_posterior_predictive(
                 idata,

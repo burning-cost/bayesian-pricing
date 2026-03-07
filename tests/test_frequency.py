@@ -176,7 +176,7 @@ class TestHierarchicalFrequencyModel:
         Pathfinder approximation this should be detectable.
         """
         posterior = fitted_model.idata.posterior
-        u_veh = posterior["u_veh"].values.reshape(-1, 5)  # 5 vehicle groups
+        u_veh = posterior["u_veh_group"].values.reshape(-1, 5)  # 5 vehicle groups
         levels = fitted_model._group_levels["veh_group"].tolist()
         b_idx = levels.index("B")
         c_idx = levels.index("C")
@@ -188,7 +188,7 @@ class TestHierarchicalFrequencyModel:
     def test_young_drivers_higher_than_middle_aged(self, fitted_model):
         """Age band 17-21 has u_age=0.8, 36-50 has u_age=0.0. Large signal."""
         posterior = fitted_model.idata.posterior
-        u_age = posterior["u_age"].values.reshape(-1, 5)
+        u_age = posterior["u_age_band"].values.reshape(-1, 5)
         levels = fitted_model._group_levels["age_band"].tolist()
         young_idx = levels.index("17-21")
         mid_idx = levels.index("36-50")

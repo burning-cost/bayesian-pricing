@@ -365,13 +365,29 @@ class HierarchicalFrequency:
                     progressbar=True,
                     return_inferencedata=True,
                 )
-            else:  # pathfinder
-                idata = pm.fit(
-                    method="pathfinder",
-                    draws=sampler_config.draws,
-                    random_seed=sampler_config.random_seed,
-                    progressbar=True,
-                )
+            else:  # pathfinder (or advi fallback if pathfinder not available)
+                try:
+                    idata = pm.fit(
+                        method="pathfinder",
+                        draws=sampler_config.draws,
+                        random_seed=sampler_config.random_seed,
+                        progressbar=True,
+                    )
+                except (KeyError, ValueError):
+                    # pathfinder not available in this PyMC version; fall back to ADVI
+                    import warnings
+                    warnings.warn(
+                        "pathfinder not available in this PyMC installation; "
+                        "falling back to ADVI. Upgrade to PyMC>=5.3 for pathfinder.",
+                        stacklevel=3,
+                    )
+                    approx = pm.fit(
+                        n=20_000,
+                        method="advi",
+                        random_seed=sampler_config.random_seed,
+                        progressbar=False,
+                    )
+                    idata = approx.sample(sampler_config.draws)
 
             # Posterior predictive for diagnostics and calibration
             idata = pm.sample_posterior_predictive(
