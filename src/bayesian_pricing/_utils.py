@@ -13,13 +13,13 @@ def _check_pymc() -> None:
     except ImportError:
         raise ImportError(
             "PyMC is required for fitting Bayesian models. Install it with:\n\n"
-            "    pip install pymc\n\n"
+            "    uv add pymc\n\n"
             "Or install this package with the pymc extras:\n\n"
-            "    pip install bayesian-pricing[pymc]\n\n"
+            "    uv add bayesian-pricing[pymc]\n\n"
             "PyMC requires C++ compiler tools on some platforms. See:\n"
             "    https://www.pymc.io/projects/docs/en/stable/installation.html\n\n"
             "For GPU acceleration (large portfolios), install with NumPyro backend:\n"
-            "    uv pip install bayesian-pricing[numpyro]"
+            "    uv add bayesian-pricing[numpyro]"
         )
 
 

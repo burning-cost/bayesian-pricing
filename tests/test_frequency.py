@@ -24,7 +24,7 @@ try:
 except ImportError:
     HAS_PYMC = False
 
-SKIP_MSG = "PyMC not installed. Install with: uv pip install bayesian-pricing[pymc]"
+SKIP_MSG = "PyMC not installed. Install with: uv add bayesian-pricing[pymc]"
 
 
 # ── API / contract tests (no PyMC) ──────────────────────────────────────────
