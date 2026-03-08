@@ -53,8 +53,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/burningcost/bayesian-pricing"
-Repository = "https://github.com/burningcost/bayesian-pricing"
+Homepage = "https://github.com/burning-cost/bayesian-pricing"
+Repository = "https://github.com/burning-cost/bayesian-pricing"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bayesian_pricing"]
