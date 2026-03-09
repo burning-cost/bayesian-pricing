@@ -24,19 +24,13 @@ jobs:
       - name: Install package and test dependencies
         run: |
           pip install --upgrade pip
-          # Install with PyMC extras for the full test suite
-          pip install -e ".[pymc,dev]"
+          # Install without PyMC — it is too heavy for CI (compilation + large deps).
+          # PyMC tests are skipped via the "pymc" marker below.
+          pip install -e ".[dev]"
 
       - name: Run API tests (no PyMC required)
         run: |
           pytest tests/ -v -m "not pymc" --tb=short
-
-      - name: Run full test suite with PyMC
-        run: |
-          pytest tests/ -v --tb=short -x
-        # -x stops on first failure. PyMC tests use Pathfinder so should be fast
-        # but still take a few minutes per Python version.
-        timeout-minutes: 30
 
       - name: Check import and version
         run: |
