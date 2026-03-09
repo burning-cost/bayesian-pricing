@@ -1,5 +1,9 @@
 # bayesian-pricing
 
+[![Tests](https://github.com/burning-cost/bayesian-pricing/actions/workflows/tests.yml/badge.svg)](https://github.com/burning-cost/bayesian-pricing/actions/workflows/tests.yml)
+[![PyPI](https://img.shields.io/pypi/v/bayesian-pricing)](https://pypi.org/project/bayesian-pricing/)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+
 Hierarchical Bayesian models for insurance pricing thin-data segments.
 
 ## The problem
@@ -13,7 +17,7 @@ Standard approaches all fail at thin cells:
 - **Ridge/LASSO GLM**: uniform regularisation regardless of exposure. A cell with 5,000 policy-years gets the same shrinkage as one with 20 policy-years. Wrong.
 - **GBM with min_data_in_leaf**: refuses to split on thin cells. Cannot borrow strength from related cells. No calibrated uncertainty.
 
-The correct answer is **partial pooling**: thin segments borrow strength from related segments via a shared population distribution. The degree of borrowing is data-driven - determined by the ratio of within-segment sampling noise to between-segment signal variance. This is the Bayesian posterior.
+The correct answer is **partial pooling**: thin segments borrow strength from related segments via a shared population distribution. The degree of borrowing is data-driven — determined by the ratio of within-segment sampling noise to between-segment signal variance. This is the Bayesian posterior.
 
 Under Normal-Normal conjugacy, partial pooling is exactly Bühlmann-Straub credibility. This library generalises it to Poisson (frequency) and Gamma (severity) likelihoods, with multiple crossed random effects.
 
@@ -23,7 +27,7 @@ Under Normal-Normal conjugacy, partial pooling is exactly Bühlmann-Straub credi
 uv add "bayesian-pricing[pymc]"
 ```
 
-PyMC 5.x is an optional dependency - it is not pulled in by default because it has C++ compiler requirements on some platforms. The `[pymc]` extra handles this. For GPU-accelerated inference on large portfolios:
+PyMC 5.x is an optional dependency — it is not pulled in by default because it has C++ compiler requirements on some platforms. The `[pymc]` extra handles this. For GPU-accelerated inference on large portfolios:
 
 ```bash
 uv add "bayesian-pricing[numpyro]"
@@ -31,7 +35,7 @@ uv add "bayesian-pricing[numpyro]"
 
 ## Usage
 
-Input is segment-level sufficient statistics - one row per rating cell, with exposure and claim count. This is the practical production design: aggregate your book to rating cells first, then run the model. A book with 500k policies typically has 5,000–20,000 non-empty rating cells. The model operates on those cells, making NUTS feasible on a standard machine.
+Input is segment-level sufficient statistics — one row per rating cell, with exposure and claim count. This is the practical production design: aggregate your book to rating cells first, then run the model. A book with 500k policies typically has 5,000–20,000 non-empty rating cells. The model operates on those cells, making NUTS feasible on a standard machine.
 
 ```python
 import polars as pl
@@ -167,15 +171,30 @@ For single-factor pricing with many groups (e.g., scheme pricing), Bühlmann-Str
 
 ## Design decisions
 
-**Non-centered parameterization throughout.** The centered version (`u_i ~ Normal(0, sigma)`) creates funnel geometry in the posterior when sigma is small - which is exactly the case for well-regularised insurance models. HMC cannot traverse the funnel efficiently. The non-centered version decouples the raw offsets from the scale and eliminates this problem. See Twiecki (2017) for the clearest exposition.
+**Non-centered parameterisation throughout.** The centered version (`u_i ~ Normal(0, sigma)`) creates funnel geometry in the posterior when sigma is small — which is exactly the case for well-regularised insurance models. HMC cannot traverse the funnel efficiently. The non-centered version decouples the raw offsets from the scale and eliminates this problem. See Twiecki (2017) for the clearest exposition.
 
 **Segment-level input, not policy-level.** This is the practical production design. NUTS does not scale linearly with observation count. A model with 10,000 rating cells runs in minutes; a model with 1 million policy rows takes hours. Aggregate first.
 
-**HalfNormal variance hyperpriors, not HalfCauchy.** HalfCauchy has heavy tails that allow unrealistically large random effects for thin cells - the opposite of the regularisation we want. HalfNormal (Gelman et al., 2013) produces appropriate shrinkage for insurance factors.
+**HalfNormal variance hyperpriors, not HalfCauchy.** HalfCauchy has heavy tails that allow unrealistically large random effects for thin cells — the opposite of the regularisation we want. HalfNormal (Gelman et al., 2013) produces appropriate shrinkage for insurance factors.
 
 **Frequency-severity split, not Tweedie.** The split allows different pooling structures for frequency and severity. Young drivers have high frequency but similar severity to older drivers. A Tweedie cannot capture this. The Gamma likelihood handles attritional severity; model large claims separately with Pareto or log-normal.
 
 **PyMC optional.** The library parses and validates data without PyMC. Tests for the data layer run in CI without it. This makes the library usable in environments where PyMC is hard to install.
+
+## Read more
+
+[Partial Pooling for Thin Rating Cells](https://burning-cost.github.io/2026/03/06/bayesian-hierarchical-models-for-thin-data-pricing.html) — why every other approach fails thin segments and how hierarchical Bayesian models solve it.
+
+## Related libraries
+
+| Library | Why it's relevant |
+|---------|------------------|
+| [credibility](https://github.com/burning-cost/credibility) | Bühlmann-Straub credibility weighting — the closed-form special case of this library under Normal-Normal conjugacy |
+| [insurance-interactions](https://github.com/burning-cost/insurance-interactions) | Automated detection of missing GLM interactions — the complementary question to thin-cell regularisation |
+| [insurance-datasets](https://github.com/burning-cost/insurance-datasets) | Synthetic UK motor and home datasets with known DGPs — useful for validating that the model recovers true parameters |
+| [insurance-monitoring](https://github.com/burning-cost/insurance-monitoring) | Model monitoring: PSI and A/E drift detection for tracking when the deployed model needs a refit |
+
+[All Burning Cost libraries →](https://burning-cost.github.io)
 
 ## References
 
