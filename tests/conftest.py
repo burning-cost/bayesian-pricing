@@ -17,7 +17,9 @@ import pytest
 try:
     import pymc  # noqa: F401
     HAS_PYMC = True
-except ImportError:
+except (ImportError, AttributeError):
+    # AttributeError can occur if pymc imports successfully but a dependency
+    # (e.g., arviz 1.0+) is incompatible and raises AttributeError at module level
     HAS_PYMC = False
 
 

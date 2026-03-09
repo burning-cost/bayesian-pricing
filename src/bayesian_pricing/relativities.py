@@ -15,7 +15,7 @@ scale: relativity_j = exp(u_k_j). But the actuary wants:
    segment's own experience vs the portfolio mean?
 
 This class extracts all three from a fitted HierarchicalFrequency or
-HierarchicalSeverity model and returns a DataFrame in a format that can
+HierarchicalSeverity model and returns Polars DataFrames in a format that can
 be directly imported into a rate table or handed to an underwriter.
 
 The relativities are by design multiplicative around a base of 1.0. The base
@@ -43,8 +43,8 @@ class RelativityTable:
     Attributes:
         factor: The grouping column name (e.g., "veh_group").
         levels: List of levels in the factor.
-        table: DataFrame with columns: level, relativity, lower, upper,
-            credibility_factor, n_claims, exposure (where available).
+        table: Polars DataFrame with columns: level, relativity, lower, upper,
+            credibility_factor, interval_width.
 
     The credibility_factor tells you how data-dominated each level is:
         0.0 = fully pooled to portfolio mean (estimate is 1.0 relativity)
@@ -57,7 +57,7 @@ class RelativityTable:
 
     factor: str
     levels: list
-    table: pd.DataFrame
+    table: "pl.DataFrame"
 
 
 class BayesianRelativities:
@@ -65,7 +65,7 @@ class BayesianRelativities:
 
     Works with both HierarchicalFrequency and HierarchicalSeverity. The output
     is designed to be actuary-friendly: a table of relativities per factor level
-    with credible intervals.
+    with credible intervals. All output DataFrames are Polars.
 
     Args:
         model: A fitted HierarchicalFrequency or HierarchicalSeverity instance.
@@ -86,7 +86,7 @@ class BayesianRelativities:
 
         rel = BayesianRelativities(freq, hdi_prob=0.9)
 
-        # Summary DataFrame across all factors
+        # Summary Polars DataFrame across all factors
         print(rel.relativities())
 
         # Single factor
@@ -138,6 +138,8 @@ class BayesianRelativities:
 
     def _relativity_table(self, col: str, az) -> RelativityTable:
         """Build a RelativityTable for a single grouping factor."""
+        import polars as pl
+
         posterior = self._model.idata.posterior
         u_samples = posterior[f"u_{col}"].values  # (chains, draws, n_levels)
         u_flat = u_samples.reshape(-1, u_samples.shape[-1])  # (n_samples, n_levels)
@@ -160,32 +162,28 @@ class BayesianRelativities:
         point_estimate = np.median(rel_samples, axis=0)
         hdi_lower, hdi_upper = self._compute_hdi(rel_samples)
 
-        # Credibility factor:
-        # Z_j = (posterior median - 1) / (observed rate / portfolio mean - 1)
-        # This is a Bayesian generalisation of the B-S Z_j = w_j / (w_j + K).
-        # Values close to 1: segment's own data dominates.
-        # Values close to 0: segment is pulled to portfolio mean.
-        # We approximate Z from how much shrinkage occurred vs the prior.
+        # Credibility factor heuristic: compare posterior uncertainty to prior uncertainty.
+        # Low posterior std relative to prior std -> high credibility (less uncertain).
         prior_std = np.ones(len(levels)) * self._model.variance_prior_sigma
         posterior_std = rel_samples.std(axis=0)
-        # Heuristic credibility: compare posterior uncertainty to prior uncertainty
-        # Low posterior std relative to prior std -> high credibility (less uncertain)
-        prior_rel_std = np.exp(prior_std) - 1  # approximate prior std of relativities
+        prior_rel_std = np.exp(prior_std) - 1
         credibility = np.clip(1 - posterior_std / (prior_rel_std + 1e-8), 0, 1)
 
-        table = pd.DataFrame({
+        lower_col = f"lower_{int(self.hdi_prob * 100)}pct"
+        upper_col = f"upper_{int(self.hdi_prob * 100)}pct"
+
+        table = pl.DataFrame({
             "level": levels,
-            "relativity": point_estimate,
-            f"lower_{int(self.hdi_prob * 100)}pct": hdi_lower,
-            f"upper_{int(self.hdi_prob * 100)}pct": hdi_upper,
-            "credibility_factor": credibility,
-            "interval_width": hdi_upper - hdi_lower,
-        })
-        table = table.sort_values("relativity", ascending=False).reset_index(drop=True)
+            "relativity": point_estimate.tolist(),
+            lower_col: hdi_lower.tolist(),
+            upper_col: hdi_upper.tolist(),
+            "credibility_factor": credibility.tolist(),
+            "interval_width": (hdi_upper - hdi_lower).tolist(),
+        }).sort("relativity", descending=True)
 
         return RelativityTable(factor=col, levels=levels, table=table)
 
-    def credibility_factors(self) -> pd.DataFrame:
+    def credibility_factors(self) -> "pl.DataFrame":
         """Return credibility factors for all segments across all factors.
 
         The credibility factor answers: "what fraction of this segment's estimate
@@ -193,21 +191,23 @@ class BayesianRelativities:
         equivalent of Z_j = w_j / (w_j + K) in Bühlmann-Straub.
 
         Returns:
-            DataFrame with factor, level, and credibility_factor columns.
+            Polars DataFrame with factor, level, credibility_factor, and relativity columns.
         """
-        rows = []
+        import polars as pl
+
+        rows: list[dict] = []
         for col in self._model.group_cols:
             rt = self._relativity_table(col, None)
-            for _, row in rt.table.iterrows():
+            for row in rt.table.iter_rows(named=True):
                 rows.append({
                     "factor": col,
                     "level": row["level"],
                     "credibility_factor": row["credibility_factor"],
                     "relativity": row["relativity"],
                 })
-        return pd.DataFrame(rows)
+        return pl.DataFrame(rows)
 
-    def thin_segments(self, credibility_threshold: float = 0.3) -> pd.DataFrame:
+    def thin_segments(self, credibility_threshold: float = 0.3) -> "pl.DataFrame":
         """Return segments where the credibility factor is below the threshold.
 
         These are the segments where the model is doing the most work --
@@ -224,28 +224,35 @@ class BayesianRelativities:
                 estimate comes from own experience).
 
         Returns:
-            DataFrame with factor, level, credibility_factor, and relativity.
+            Polars DataFrame with factor, level, credibility_factor, and relativity.
         """
         creds = self.credibility_factors()
-        thin = creds[creds["credibility_factor"] < credibility_threshold].copy()
-        thin = thin.sort_values("credibility_factor").reset_index(drop=True)
-        return thin
+        return (
+            creds
+            .filter(creds["credibility_factor"] < credibility_threshold)
+            .sort("credibility_factor")
+        )
 
-    def summary(self) -> pd.DataFrame:
+    def summary(self) -> "pl.DataFrame":
         """Long-format summary of all relativities across all factors.
 
         Convenient for exporting to Excel or plotting. One row per (factor, level)
-        combination.
+        combination. Returns a Polars DataFrame.
         """
-        rows = []
+        import polars as pl
+
+        frames = []
         for col in self._model.group_cols:
             rt = self._relativity_table(col, None)
-            for _, row in rt.table.iterrows():
-                rows.append({
-                    "factor": col,
-                    **row.to_dict(),
-                })
-        return pd.DataFrame(rows)
+            frames.append(rt.table.with_columns(pl.lit(col).alias("factor")))
+
+        if not frames:
+            return pl.DataFrame()
+
+        # Move 'factor' to the front
+        combined = pl.concat(frames)
+        cols = ["factor"] + [c for c in combined.columns if c != "factor"]
+        return combined.select(cols)
 
     def _compute_hdi(self, samples: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Compute Highest Density Interval for each column of samples.
@@ -263,8 +270,6 @@ class BayesianRelativities:
         _check_pymc()
         import arviz as az
 
-        # az.hdi expects (chains, draws, ...) or flat array
-        # We have (n_samples, n_levels) -- compute per level
         lower = np.empty(samples.shape[1])
         upper = np.empty(samples.shape[1])
 

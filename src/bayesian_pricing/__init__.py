@@ -15,6 +15,11 @@ Under Normal-Normal conjugacy, this is exactly Bühlmann-Straub credibility. Thi
 generalises that to Poisson (frequency) and Gamma (severity) likelihoods, with multiple
 crossed random effects, using PyMC 5.x under the hood.
 
+Input: both pandas and Polars DataFrames are accepted everywhere.
+Output: all DataFrames returned by predict(), variance_components(),
+        relativities(), credibility_factors(), thin_segments(), summary(),
+        and convergence_summary() are Polars DataFrames.
+
 Primary classes:
     HierarchicalFrequency: Poisson hierarchical model for claim frequency
     HierarchicalSeverity: Gamma hierarchical model for claim severity
@@ -22,13 +27,16 @@ Primary classes:
 
 Usage::
 
+    import polars as pl
     from bayesian_pricing import HierarchicalFrequency, BayesianRelativities
+
+    df = pl.read_parquet("segments.parquet")  # or a pandas DataFrame
 
     freq_model = HierarchicalFrequency(group_cols=["veh_group", "age_band"])
     freq_model.fit(df, claim_count_col="claims", exposure_col="earned_exposure")
 
     rel = BayesianRelativities(freq_model)
-    print(rel.relativities())          # DataFrame with posterior median + credible interval
+    print(rel.relativities())          # Polars DataFrame with posterior median + credible interval
     print(rel.credibility_factors())   # How much weight each segment puts on own data
 """
 
@@ -37,7 +45,7 @@ from bayesian_pricing.severity import HierarchicalSeverity
 from bayesian_pricing.relativities import BayesianRelativities
 from bayesian_pricing.diagnostics import convergence_summary, posterior_predictive_check
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "HierarchicalFrequency",
     "HierarchicalSeverity",

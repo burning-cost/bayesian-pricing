@@ -31,6 +31,9 @@ Input contract:
 
     This also makes the model composable with a first-stage GBM: aggregate
     residuals from the GBM at segment level, then pool those residuals.
+
+    Both pandas and Polars DataFrames are accepted as input. All output
+    DataFrames are returned as Polars.
 """
 
 from __future__ import annotations
@@ -48,6 +51,8 @@ from bayesian_pricing._utils import (
     _validate_columns_present,
     _portfolio_mean_rate,
     _segment_index,
+    _to_pandas,
+    DataFrameLike,
 )
 
 
@@ -150,15 +155,15 @@ class HierarchicalFrequency:
 
     Examples::
 
-        import pandas as pd
+        import polars as pl
         from bayesian_pricing import HierarchicalFrequency
 
-        # Segment-level data: one row per rating cell
-        df = pd.DataFrame({
+        # Segment-level data: one row per rating cell (Polars or pandas accepted)
+        df = pl.DataFrame({
             "veh_group": ["A", "A", "B", "B", "C"],
             "age_band":  ["17-21", "22-35", "17-21", "22-35", "22-35"],
             "claims":    [12, 45, 8, 120, 3],
-            "exposure":  [80, 400, 60, 900, 25],
+            "exposure":  [80.0, 400.0, 60.0, 900.0, 25.0],
         })
 
         model = HierarchicalFrequency(
@@ -167,7 +172,7 @@ class HierarchicalFrequency:
         )
         model.fit(df, claim_count_col="claims", exposure_col="exposure")
 
-        # Posterior predictive means for each segment
+        # Posterior predictive means for each segment -- returns a Polars DataFrame
         print(model.predict())
 
         # Variance components: how much each factor explains
@@ -202,7 +207,7 @@ class HierarchicalFrequency:
 
     def fit(
         self,
-        data: pd.DataFrame,
+        data: DataFrameLike,
         claim_count_col: str = "claims",
         exposure_col: str = "exposure",
         sampler_config: Optional[SamplerConfig] = None,
@@ -210,9 +215,10 @@ class HierarchicalFrequency:
         """Fit the hierarchical Poisson model to segment-level data.
 
         Args:
-            data: DataFrame with one row per rating segment. Must contain the
-                group columns specified in ``group_cols``, the claim count column,
-                and the exposure column. Exposure should be in policy-years.
+            data: DataFrame with one row per rating segment. Accepts both pandas
+                and Polars DataFrames. Must contain the group columns specified in
+                ``group_cols``, the claim count column, and the exposure column.
+                Exposure should be in policy-years.
             claim_count_col: Column containing observed claim counts (integer).
             exposure_col: Column containing earned exposure in policy-years.
             sampler_config: Sampling settings. Default uses NUTS with 4 chains,
@@ -221,16 +227,18 @@ class HierarchicalFrequency:
         Returns:
             self (for method chaining)
         """
+        # Accept pandas or Polars; work internally with pandas
+        # Validation runs before _check_pymc() so API tests don't require PyMC.
+        df = _to_pandas(data).copy().reset_index(drop=True)
+
+        _validate_columns_present(df, self.group_cols + [claim_count_col, exposure_col])
+        _validate_positive(df[exposure_col], exposure_col)
+
         _check_pymc()
         import pymc as pm
 
-        _validate_columns_present(data, self.group_cols + [claim_count_col, exposure_col])
-        _validate_positive(data[exposure_col], exposure_col)
-
         if sampler_config is None:
             sampler_config = SamplerConfig()
-
-        df = data.copy().reset_index(drop=True)
 
         # Estimate portfolio mean rate from data if not provided
         if self.prior_mean_rate is None:
@@ -399,22 +407,25 @@ class HierarchicalFrequency:
         self._fitted = True
         return self
 
-    def predict(self, quantiles: tuple[float, float, float] = (0.05, 0.5, 0.95)) -> pd.DataFrame:
+    def predict(self, quantiles: tuple[float, float, float] = (0.05, 0.5, 0.95)) -> "pl.DataFrame":
         """Return posterior predictive claim rates for each segment.
 
         The "claim rate" here is claims per policy-year -- the lambda parameter
         in the Poisson model, not the raw claim count.
 
-        Returns a DataFrame indexed the same as the training data, with columns:
+        Returns a Polars DataFrame indexed the same as the training data, with columns:
+            - The group columns from your training data
             - mean: posterior mean claim rate (use this as your point estimate)
             - The quantiles you specified (default: p5, p50, p95)
-            - shrinkage: how much this segment was pulled toward the portfolio mean
-              (0 = fully pooled to mean, 1 = trusts own data completely)
+            - credibility_factor: how much this segment was pulled toward the portfolio
+              mean (0 = fully pooled to mean, 1 = trusts own data completely)
 
         Args:
             quantiles: Posterior quantiles to return. Default gives 90% credible
                 interval + median.
         """
+        import polars as pl
+
         self._check_fitted()
         import arviz as az
 
@@ -444,37 +455,28 @@ class HierarchicalFrequency:
 
         rate_samples = np.exp(log_rate_samples)  # (n_samples, n_segments)
 
-        result = self._segment_data[self.group_cols].copy()
-        result["mean"] = rate_samples.mean(axis=0)
-        for q in quantiles:
-            result[f"p{int(q * 100)}"] = np.quantile(rate_samples, q, axis=0)
+        # Build result as a dict first, then convert to Polars
+        result_dict: dict = {}
+        for col in self.group_cols:
+            result_dict[col] = self._segment_data[col].tolist()
 
-        # Shrinkage: ratio of posterior variance to prior variance.
-        # High shrinkage -> segment is data-dominated.
-        # Low shrinkage -> segment was pooled toward the mean.
-        prior_var = np.exp(self.prior_sigma_rate**2) - 1  # log-normal variance approximation
-        posterior_var = rate_samples.var(axis=0)
-        # Simple credibility-style shrinkage: compare segment rate to portfolio mean
-        portfolio_mean = np.exp(alpha_samples.mean())
-        observed_rates = (
-            self._segment_data.iloc[:, -2].values  # claim count col
-            / self._segment_data.iloc[:, -1].values  # exposure col
-            if False  # disabled: use posterior instead
-            else rate_samples.mean(axis=0)
-        )
+        result_dict["mean"] = rate_samples.mean(axis=0).tolist()
+        for q in quantiles:
+            result_dict[f"p{int(q * 100)}"] = np.quantile(rate_samples, q, axis=0).tolist()
 
         # Credibility factor: Z = (posterior mean - portfolio mean) / (observed rate - portfolio mean)
         # Undefined when observed rate == portfolio mean; clamp to [0, 1].
+        portfolio_mean = float(np.exp(alpha_samples.mean()))
         obs = self._get_observed_rates()
         denom = obs - portfolio_mean
-        num = result["mean"].values - portfolio_mean
+        num = np.array(result_dict["mean"]) - portfolio_mean
         with np.errstate(divide="ignore", invalid="ignore"):
             z = np.where(np.abs(denom) < 1e-10, 0.5, np.clip(num / denom, 0, 1))
-        result["credibility_factor"] = z
+        result_dict["credibility_factor"] = z.tolist()
 
-        return result
+        return pl.DataFrame(result_dict)
 
-    def variance_components(self) -> pd.DataFrame:
+    def variance_components(self) -> "pl.DataFrame":
         """Return posterior summary of variance hyperparameters.
 
         These are the sigma parameters that control how much each grouping factor
@@ -485,16 +487,19 @@ class HierarchicalFrequency:
         On the log scale, sigma = 0.3 corresponds to a typical between-segment
         spread of about ±35% from the portfolio mean.
 
-        Returns a DataFrame with one row per grouping factor (and one per
-        interaction pair), with columns: mean, sd, hdi_3%, hdi_97%.
+        Returns a Polars DataFrame with one row per grouping factor (and one per
+        interaction pair), with columns: parameter, mean, sd, hdi_3%, hdi_97%,
+        typical_relativity_spread.
         """
+        import polars as pl
+
         self._check_fitted()
         import arviz as az
 
         var_names = [f"sigma_{col}" for col in self.group_cols]
         var_names += [f"sigma_{a}_x_{b}" for a, b in self.interaction_pairs]
 
-        summary = az.summary(
+        summary_pd = az.summary(
             self._idata,
             var_names=var_names,
             stat_funcs=None,
@@ -502,9 +507,10 @@ class HierarchicalFrequency:
         )
 
         # Add human interpretation column
-        summary["typical_relativity_spread"] = np.exp(summary["mean"]) - 1
+        summary_pd["typical_relativity_spread"] = np.exp(summary_pd["mean"]) - 1
 
-        return summary
+        # Convert to Polars, bringing the index (parameter names) in as a column
+        return pl.from_pandas(summary_pd.reset_index().rename(columns={"index": "parameter"}))
 
     @property
     def idata(self):

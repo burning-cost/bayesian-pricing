@@ -9,11 +9,16 @@ The model tests use Pathfinder (variational inference) rather than NUTS to keep
 CI runtime under a few minutes. This sacrifices posterior accuracy for speed.
 Prior recovery tests are therefore approximate: we check that the posterior mean
 is within ~30% of the true parameter, not tight confidence bounds.
+
+Inputs are passed as pandas DataFrames to exercise the backward-compat path.
+All output DataFrames are Polars.
 """
 
 import numpy as np
 import pandas as pd
 import pytest
+
+import polars as pl
 
 from bayesian_pricing import HierarchicalFrequency
 from bayesian_pricing.frequency import SamplerConfig
@@ -21,7 +26,7 @@ from bayesian_pricing.frequency import SamplerConfig
 try:
     import pymc  # noqa: F401
     HAS_PYMC = True
-except ImportError:
+except (ImportError, AttributeError):
     HAS_PYMC = False
 
 SKIP_MSG = "PyMC not installed. Install with: uv add bayesian-pricing[pymc]"
@@ -65,6 +70,17 @@ class TestHierarchicalFrequencyAPI:
         model = HierarchicalFrequency(group_cols=["segment"])
         with pytest.raises(ValueError, match="strictly positive"):
             model.fit(df, claim_count_col="claims", exposure_col="exposure")
+
+    def test_fit_accepts_polars_input(self, small_freq_data):
+        """Polars input must be accepted without error (validation is pre-PyMC)."""
+        polars_df = pl.from_pandas(small_freq_data)
+        model = HierarchicalFrequency(group_cols=["segment"])
+        # Validation occurs before PyMC check, so even without PyMC we can test the
+        # conversion path up to the _check_pymc() call.
+        try:
+            model.fit(polars_df, claim_count_col="claims", exposure_col="exposure")
+        except (ImportError, AttributeError):
+            pass  # PyMC not installed -- that's fine, conversion worked
 
     def test_interaction_pair_not_in_group_cols_raises(self, small_freq_data):
         model = HierarchicalFrequency(
@@ -124,9 +140,9 @@ class TestHierarchicalFrequencyModel:
     def test_idata_has_posterior(self, fitted_model):
         assert hasattr(fitted_model.idata, "posterior")
 
-    def test_predict_returns_dataframe(self, fitted_model):
+    def test_predict_returns_polars_dataframe(self, fitted_model):
         preds = fitted_model.predict()
-        assert isinstance(preds, pd.DataFrame)
+        assert isinstance(preds, pl.DataFrame)
         assert "mean" in preds.columns
         assert "p5" in preds.columns
         assert "p95" in preds.columns
@@ -149,12 +165,13 @@ class TestHierarchicalFrequencyModel:
         assert (preds["credibility_factor"] >= 0).all()
         assert (preds["credibility_factor"] <= 1).all()
 
-    def test_variance_components_returns_dataframe(self, fitted_model):
+    def test_variance_components_returns_polars_dataframe(self, fitted_model):
         vc = fitted_model.variance_components()
-        assert isinstance(vc, pd.DataFrame)
-        # Should have one row per group col
+        assert isinstance(vc, pl.DataFrame)
+        # Should have one row per group col; parameter names are in "parameter" column
+        param_names = vc["parameter"].to_list()
         for col in fitted_model.group_cols:
-            assert f"sigma_{col}" in vc.index
+            assert f"sigma_{col}" in param_names
 
     def test_posterior_intercept_near_true_rate(self, fitted_model):
         """The global intercept should recover the portfolio mean rate.
@@ -204,6 +221,25 @@ class TestHierarchicalFrequencyModel:
             sampler_config=config,
         )
         assert result is model
+
+    def test_fit_accepts_polars_input(self, freq_segment_data):
+        """Polars DataFrame input should work identically to pandas."""
+        polars_data = pl.from_pandas(freq_segment_data)
+        model = HierarchicalFrequency(
+            group_cols=["veh_group"],
+            prior_mean_rate=0.08,
+        )
+        config = SamplerConfig(method="pathfinder", draws=100, random_seed=7)
+        result = model.fit(
+            polars_data,
+            claim_count_col="claims",
+            exposure_col="exposure",
+            sampler_config=config,
+        )
+        assert result._fitted
+        preds = result.predict()
+        assert isinstance(preds, pl.DataFrame)
+        assert len(preds) == len(freq_segment_data)
 
 
 @pytest.mark.skipif(not HAS_PYMC, reason=SKIP_MSG)

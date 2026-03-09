@@ -42,6 +42,9 @@ Why Gamma and not log-normal?
 
 For large claims (BI, total losses), consider parameterising a Pareto or log-normal
 severity model manually using PyMC directly.
+
+Both pandas and Polars DataFrames are accepted as input. All output DataFrames are
+returned as Polars.
 """
 
 from __future__ import annotations
@@ -56,6 +59,8 @@ from bayesian_pricing._utils import (
     _validate_positive,
     _validate_columns_present,
     _segment_index,
+    _to_pandas,
+    DataFrameLike,
 )
 from bayesian_pricing.frequency import SamplerConfig
 
@@ -89,15 +94,15 @@ class HierarchicalSeverity:
 
     Examples::
 
-        import pandas as pd
+        import polars as pl
         from bayesian_pricing import HierarchicalSeverity
 
-        # One row per segment, claims > 0 only
-        df = pd.DataFrame({
+        # One row per segment, claims > 0 only (Polars or pandas accepted)
+        df = pl.DataFrame({
             "veh_group":        ["A", "A", "B", "B", "C"],
             "age_band":         ["17-21", "22-35", "17-21", "22-35", "22-35"],
             "claim_count":      [12, 45, 8, 120, 3],
-            "avg_claim_cost":   [2100, 1850, 2400, 1950, 1700],
+            "avg_claim_cost":   [2100.0, 1850.0, 2400.0, 1950.0, 1700.0],
         })
 
         model = HierarchicalSeverity(
@@ -110,7 +115,7 @@ class HierarchicalSeverity:
             weight_col="claim_count",
         )
 
-        print(model.predict())
+        print(model.predict())  # returns a Polars DataFrame
     """
 
     def __init__(
@@ -141,7 +146,7 @@ class HierarchicalSeverity:
 
     def fit(
         self,
-        data: pd.DataFrame,
+        data: DataFrameLike,
         severity_col: str = "avg_claim_cost",
         weight_col: Optional[str] = None,
         sampler_config: Optional[SamplerConfig] = None,
@@ -149,9 +154,9 @@ class HierarchicalSeverity:
         """Fit the hierarchical Gamma model.
 
         Args:
-            data: DataFrame with one row per segment, claims > 0.
-                Must contain group columns, the severity column, and
-                optionally a weight column (claim counts).
+            data: DataFrame with one row per segment, claims > 0. Accepts both
+                pandas and Polars DataFrames. Must contain group columns, the
+                severity column, and optionally a weight column (claim counts).
             severity_col: Column containing average claim cost per segment.
                 Must be strictly positive.
             weight_col: Optional column containing claim counts. If provided,
@@ -164,19 +169,22 @@ class HierarchicalSeverity:
         Returns:
             self
         """
-        _check_pymc()
-        import pymc as pm
+        # Accept pandas or Polars; work internally with pandas
+        # Validation runs before _check_pymc() so API tests don't require PyMC.
+        df = _to_pandas(data).copy().reset_index(drop=True)
 
         required_cols = self.group_cols + [severity_col]
         if weight_col:
             required_cols.append(weight_col)
-        _validate_columns_present(data, required_cols)
-        _validate_positive(data[severity_col], severity_col)
+        _validate_columns_present(df, required_cols)
+        _validate_positive(df[severity_col], severity_col)
+
+        _check_pymc()
+        import pymc as pm
 
         if sampler_config is None:
             sampler_config = SamplerConfig()
 
-        df = data.copy().reset_index(drop=True)
         self._segment_data = df
         self._severity_col = severity_col
         self._weight_col = weight_col
@@ -331,7 +339,7 @@ class HierarchicalSeverity:
         self._fitted = True
         return self
 
-    def predict(self, quantiles: tuple[float, float, float] = (0.05, 0.5, 0.95)) -> pd.DataFrame:
+    def predict(self, quantiles: tuple[float, float, float] = (0.05, 0.5, 0.95)) -> "pl.DataFrame":
         """Return posterior mean severity and credible intervals for each segment.
 
         The posterior mean is the Bayesian credibility-weighted severity estimate
@@ -339,8 +347,10 @@ class HierarchicalSeverity:
         portfolio mean severity more strongly than well-populated segments.
 
         Returns:
-            DataFrame with segment identifiers plus 'mean' and quantile columns.
+            Polars DataFrame with segment identifiers plus 'mean' and quantile columns.
         """
+        import polars as pl
+
         self._check_fitted()
 
         posterior = self._idata.posterior
@@ -362,21 +372,32 @@ class HierarchicalSeverity:
 
         sev_samples = np.exp(log_sev_samples)
 
-        result = self._segment_data[self.group_cols].copy()
-        result["mean"] = sev_samples.mean(axis=0)
+        result_dict: dict = {}
+        for col in self.group_cols:
+            result_dict[col] = self._segment_data[col].tolist()
+
+        result_dict["mean"] = sev_samples.mean(axis=0).tolist()
         for q in quantiles:
-            result[f"p{int(q * 100)}"] = np.quantile(sev_samples, q, axis=0)
+            result_dict[f"p{int(q * 100)}"] = np.quantile(sev_samples, q, axis=0).tolist()
 
-        return result
+        return pl.DataFrame(result_dict)
 
-    def variance_components(self) -> pd.DataFrame:
-        """Posterior summary of variance hyperparameters by grouping factor."""
+    def variance_components(self) -> "pl.DataFrame":
+        """Posterior summary of variance hyperparameters by grouping factor.
+
+        Returns:
+            Polars DataFrame with one row per grouping factor.
+        """
+        import polars as pl
+
         self._check_fitted()
         import arviz as az
 
         var_names = [f"sigma_{col}" for col in self.group_cols]
         var_names += [f"sigma_{a}_x_{b}" for a, b in self.interaction_pairs]
-        return az.summary(self._idata, var_names=var_names, hdi_prob=0.94)
+
+        summary_pd = az.summary(self._idata, var_names=var_names, hdi_prob=0.94)
+        return pl.from_pandas(summary_pd.reset_index().rename(columns={"index": "parameter"}))
 
     @property
     def idata(self):

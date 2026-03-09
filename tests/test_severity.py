@@ -9,11 +9,15 @@ CV). With Pathfinder and 500 draws, we check that:
 1. Higher-severity vehicle groups have higher posterior means
 2. Credible intervals are wider for thin segments than dense ones
 3. The shape parameter is recovered within a factor of 2 of the true value
+
+All output DataFrames are Polars.
 """
 
 import numpy as np
 import pandas as pd
 import pytest
+
+import polars as pl
 
 from bayesian_pricing import HierarchicalSeverity
 from bayesian_pricing.frequency import SamplerConfig
@@ -21,7 +25,7 @@ from bayesian_pricing.frequency import SamplerConfig
 try:
     import pymc  # noqa: F401
     HAS_PYMC = True
-except ImportError:
+except (ImportError, AttributeError):
     HAS_PYMC = False
 
 SKIP_MSG = "PyMC not installed. Install with: uv add bayesian-pricing[pymc]"
@@ -66,6 +70,17 @@ class TestHierarchicalSeverityAPI:
         with pytest.raises(ValueError, match="not found"):
             model.fit(df, severity_col="avg_cost")
 
+    def test_fit_accepts_polars_input(self):
+        """Polars input conversion must work (validation happens before PyMC check)."""
+        df = pl.DataFrame({
+            "segment": ["A", "B"],
+            "avg_cost": [1000.0, -500.0],  # deliberately invalid to trigger early error
+            "claim_count": [10, 5],
+        })
+        model = HierarchicalSeverity(group_cols=["segment"])
+        with pytest.raises(ValueError, match="strictly positive"):
+            model.fit(df, severity_col="avg_cost", weight_col="claim_count")
+
 
 @pytest.mark.skipif(not HAS_PYMC, reason=SKIP_MSG)
 class TestHierarchicalSeverityModel:
@@ -96,9 +111,9 @@ class TestHierarchicalSeverityModel:
     def test_idata_has_posterior(self, fitted_model):
         assert hasattr(fitted_model.idata, "posterior")
 
-    def test_predict_returns_dataframe(self, fitted_model):
+    def test_predict_returns_polars_dataframe(self, fitted_model):
         preds = fitted_model.predict()
-        assert isinstance(preds, pd.DataFrame)
+        assert isinstance(preds, pl.DataFrame)
         assert "mean" in preds.columns
 
     def test_predict_severities_are_positive(self, fitted_model):
@@ -145,10 +160,11 @@ class TestHierarchicalSeverityModel:
         )
         assert model._fitted
 
-    def test_variance_components_returns_dataframe(self, fitted_model):
+    def test_variance_components_returns_polars_dataframe(self, fitted_model):
         vc = fitted_model.variance_components()
-        assert isinstance(vc, pd.DataFrame)
-        assert "sigma_veh_group" in vc.index
+        assert isinstance(vc, pl.DataFrame)
+        param_names = vc["parameter"].to_list()
+        assert "sigma_veh_group" in param_names
 
     def test_fit_returns_self(self, sev_segment_data):
         model = HierarchicalSeverity(group_cols=["veh_group"])
@@ -159,6 +175,21 @@ class TestHierarchicalSeverityModel:
             sampler_config=config,
         )
         assert result is model
+
+    def test_fit_accepts_polars_input(self, sev_segment_data):
+        """Polars DataFrame input should work identically to pandas."""
+        polars_data = pl.from_pandas(sev_segment_data)
+        model = HierarchicalSeverity(group_cols=["veh_group"])
+        config = SamplerConfig(method="pathfinder", draws=100, random_seed=5)
+        result = model.fit(
+            polars_data,
+            severity_col="avg_claim_cost",
+            weight_col="claim_count",
+            sampler_config=config,
+        )
+        assert result._fitted
+        preds = result.predict()
+        assert isinstance(preds, pl.DataFrame)
 
 
 @pytest.mark.skipif(not HAS_PYMC, reason=SKIP_MSG)

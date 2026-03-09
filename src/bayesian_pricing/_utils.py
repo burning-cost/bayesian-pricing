@@ -2,8 +2,38 @@
 
 from __future__ import annotations
 
+from typing import Union
+
 import numpy as np
 import pandas as pd
+
+
+# Type alias for DataFrame inputs we accept
+DataFrameLike = Union[pd.DataFrame, "pl.DataFrame"]
+
+
+def _to_pandas(data: DataFrameLike) -> pd.DataFrame:
+    """Accept a pandas or Polars DataFrame and return a pandas DataFrame.
+
+    This is the single point of conversion. All public API methods call this
+    at the boundary so the internal machinery always works with pandas (which
+    PyMC and ArviZ require). Callers never need to know what type was passed in.
+    """
+    # Import lazily so polars is not a hard dependency
+    try:
+        import polars as pl
+        if isinstance(data, pl.DataFrame):
+            return data.to_pandas()
+    except ImportError:
+        pass  # polars not installed; anything passed in must already be pandas
+
+    if isinstance(data, pd.DataFrame):
+        return data
+
+    raise TypeError(
+        f"Expected a pandas or Polars DataFrame, got {type(data).__name__}. "
+        "Install polars with: uv add polars"
+    )
 
 
 def _check_pymc() -> None:

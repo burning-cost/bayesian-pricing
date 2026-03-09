@@ -26,6 +26,8 @@ After convergence, validate that the model actually describes your data:
 
 These are the checks a Lloyd's of London actuary would want to see in a model
 validation report. The functions here support all of them.
+
+All output DataFrames are returned as Polars.
 """
 
 from __future__ import annotations
@@ -38,10 +40,10 @@ import pandas as pd
 from bayesian_pricing._utils import _check_pymc
 
 
-def convergence_summary(model, return_warnings: bool = True) -> pd.DataFrame:
+def convergence_summary(model, return_warnings: bool = True) -> "pl.DataFrame":
     """Summarise MCMC convergence diagnostics.
 
-    Returns a DataFrame of diagnostics for every parameter in the model.
+    Returns a Polars DataFrame of diagnostics for every parameter in the model.
     The key columns are:
 
     - r_hat: Gelman-Rubin statistic. Should be < 1.01. Values > 1.05 indicate
@@ -60,8 +62,10 @@ def convergence_summary(model, return_warnings: bool = True) -> pd.DataFrame:
             are outside acceptable ranges.
 
     Returns:
-        DataFrame with one row per parameter (or parameter level for vectors).
+        Polars DataFrame with one row per parameter (or parameter level for vectors).
     """
+    import polars as pl
+
     _check_pymc()
     import arviz as az
 
@@ -76,16 +80,16 @@ def convergence_summary(model, return_warnings: bool = True) -> pd.DataFrame:
 
     if not is_nuts:
         # Pathfinder: only basic summary, no convergence diagnostics
-        summary = az.summary(idata, kind="stats")
+        summary_pd = az.summary(idata, kind="stats")
         if return_warnings:
             print(
                 "WARNING: Model was fitted with Pathfinder (variational inference). "
                 "R-hat and ESS diagnostics are not available. "
                 "Re-fit with SamplerConfig(method='nuts') for production use."
             )
-        return summary
+        return pl.from_pandas(summary_pd.reset_index().rename(columns={"index": "parameter"}))
 
-    summary = az.summary(idata, round_to=4)
+    summary_pd = az.summary(idata, round_to=4)
 
     # Count divergences
     n_divergent = int(idata.sample_stats["diverging"].sum().item())
@@ -96,33 +100,33 @@ def convergence_summary(model, return_warnings: bool = True) -> pd.DataFrame:
 
     if return_warnings:
         # R-hat check
-        if "r_hat" in summary.columns:
-            bad_rhat = summary[summary["r_hat"] > 1.01]
+        if "r_hat" in summary_pd.columns:
+            bad_rhat = summary_pd[summary_pd["r_hat"] > 1.01]
             if len(bad_rhat) > 0:
                 print(
                     f"WARNING: {len(bad_rhat)} parameter(s) have R-hat > 1.01. "
                     f"Non-convergence detected. Do not use these results. "
                     f"Check: {bad_rhat.index.tolist()[:5]}"
                 )
-            elif summary["r_hat"].max() > 1.005:
+            elif summary_pd["r_hat"].max() > 1.005:
                 print(
-                    f"NOTE: Maximum R-hat is {summary['r_hat'].max():.4f}. "
+                    f"NOTE: Maximum R-hat is {summary_pd['r_hat'].max():.4f}. "
                     "Marginally acceptable. Consider longer chains."
                 )
             else:
-                print(f"R-hat: OK (max = {summary['r_hat'].max():.4f})")
+                print(f"R-hat: OK (max = {summary_pd['r_hat'].max():.4f})")
 
         # ESS check
-        ess_col = "ess_bulk" if "ess_bulk" in summary.columns else "ess_mean"
-        if ess_col in summary.columns:
-            low_ess = summary[summary[ess_col] < 400]
+        ess_col = "ess_bulk" if "ess_bulk" in summary_pd.columns else "ess_mean"
+        if ess_col in summary_pd.columns:
+            low_ess = summary_pd[summary_pd[ess_col] < 400]
             if len(low_ess) > 0:
                 print(
                     f"WARNING: {len(low_ess)} parameter(s) have ESS < 400. "
                     f"Increase draws or tune in SamplerConfig."
                 )
             else:
-                print(f"ESS: OK (min bulk = {summary[ess_col].min():.0f})")
+                print(f"ESS: OK (min bulk = {summary_pd[ess_col].min():.0f})")
 
         # Divergence check
         pct_divergent = n_divergent / total_samples * 100
@@ -140,9 +144,12 @@ def convergence_summary(model, return_warnings: bool = True) -> pd.DataFrame:
                 "If problem persists, check model specification."
             )
 
-    summary.attrs["n_divergences"] = n_divergent
-    summary.attrs["pct_divergences"] = n_divergent / total_samples * 100 if total_samples else 0
-    return summary
+    result = pl.from_pandas(summary_pd.reset_index().rename(columns={"index": "parameter"}))
+    result = result.with_columns([
+        pl.lit(n_divergent).alias("n_divergences"),
+        pl.lit(n_divergent / total_samples * 100 if total_samples else 0.0).alias("pct_divergences"),
+    ])
+    return result
 
 
 def posterior_predictive_check(
@@ -171,7 +178,6 @@ def posterior_predictive_check(
         - mean: overall mean prediction
         - variance: prediction variance (tests dispersion)
         - p90, p95: upper tail (important for large claim detection)
-        - gini: discriminatory power across segments
 
     Args:
         model: A fitted model (HierarchicalFrequency or HierarchicalSeverity).
@@ -230,19 +236,6 @@ def posterior_predictive_check(
                 "Pass claim_count_col or severity_col explicitly."
             )
         observed_vals = df[non_group_cols[0]].values.astype(float)
-
-    def _gini(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-        """Normalised Gini coefficient -- standard insurance model discrimination metric."""
-        if len(y_true) < 2:
-            return 0.0
-        order = np.argsort(y_pred)
-        y_sorted = y_true[order]
-        n = len(y_sorted)
-        cum_y = np.cumsum(y_sorted)
-        gini = (2 * np.sum((np.arange(1, n + 1)) * y_sorted) - (n + 1) * cum_y[-1]) / (
-            n * cum_y[-1]
-        )
-        return float(np.abs(gini))
 
     results = {}
 

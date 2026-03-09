@@ -7,13 +7,15 @@ Validates the posterior-to-relativity pipeline:
 4. thin_segments() correctly identifies low-credibility levels
 5. Output is in a format an actuary can use directly
 
-API tests are partially PyMC-free (they test error handling on unfitted models).
-All substantive tests require a fitted model.
+All output DataFrames are Polars. API tests are partially PyMC-free (they test
+error handling on unfitted models). All substantive tests require a fitted model.
 """
 
 import numpy as np
 import pandas as pd
 import pytest
+
+import polars as pl
 
 from bayesian_pricing import HierarchicalFrequency, BayesianRelativities
 from bayesian_pricing.frequency import SamplerConfig
@@ -22,7 +24,7 @@ from bayesian_pricing.relativities import RelativityTable
 try:
     import pymc  # noqa: F401
     HAS_PYMC = True
-except ImportError:
+except (ImportError, AttributeError):
     HAS_PYMC = False
 
 SKIP_MSG = "PyMC not installed. Install with: uv add bayesian-pricing[pymc]"
@@ -107,6 +109,10 @@ class TestBayesianRelativitiesOutput:
                          "credibility_factor", "interval_width"}
         assert required_cols.issubset(set(rt.table.columns))
 
+    def test_relativity_table_is_polars(self, fitted_rel):
+        rt = fitted_rel.relativities(factor="veh_group")
+        assert isinstance(rt.table, pl.DataFrame)
+
     def test_relativities_are_positive(self, fitted_rel):
         result = fitted_rel.relativities()
         for factor, rt in result.items():
@@ -121,6 +127,7 @@ class TestBayesianRelativitiesOutput:
 
     def test_credibility_factors_bounded(self, fitted_rel):
         cred = fitted_rel.credibility_factors()
+        assert isinstance(cred, pl.DataFrame)
         assert (cred["credibility_factor"] >= 0).all()
         assert (cred["credibility_factor"] <= 1).all()
 
@@ -136,17 +143,17 @@ class TestBayesianRelativitiesOutput:
         )
         rel = BayesianRelativities(model, base_level={"veh_group": "A"})
         rt = rel.relativities(factor="veh_group")
-        a_row = rt.table[rt.table["level"] == "A"]
+        a_row = rt.table.filter(rt.table["level"] == "A")
         assert len(a_row) == 1
-        assert abs(float(a_row["relativity"].iloc[0]) - 1.0) < 1e-10, (
+        assert abs(float(a_row["relativity"][0]) - 1.0) < 1e-10, (
             "Base level 'A' should have relativity exactly 1.0"
         )
 
     def test_veh_group_d_higher_relativity_than_e(self, fitted_rel):
         """True u_veh: D=0.7, E=-0.5. D should have clearly higher relativity."""
         rt = fitted_rel.relativities(factor="veh_group")
-        d_rel = float(rt.table[rt.table["level"] == "D"]["relativity"].iloc[0])
-        e_rel = float(rt.table[rt.table["level"] == "E"]["relativity"].iloc[0])
+        d_rel = float(rt.table.filter(rt.table["level"] == "D")["relativity"][0])
+        e_rel = float(rt.table.filter(rt.table["level"] == "E")["relativity"][0])
         assert d_rel > e_rel, (
             f"Expected D ({d_rel:.3f}) > E ({e_rel:.3f}) in veh_group relativities"
         )
@@ -154,13 +161,13 @@ class TestBayesianRelativitiesOutput:
     def test_young_drivers_higher_relativity(self, fitted_rel):
         """True u_age: 17-21=0.8, 36-50=0.0. Young should dominate."""
         rt = fitted_rel.relativities(factor="age_band")
-        young_rel = float(rt.table[rt.table["level"] == "17-21"]["relativity"].iloc[0])
-        mid_rel = float(rt.table[rt.table["level"] == "36-50"]["relativity"].iloc[0])
+        young_rel = float(rt.table.filter(rt.table["level"] == "17-21")["relativity"][0])
+        mid_rel = float(rt.table.filter(rt.table["level"] == "36-50")["relativity"][0])
         assert young_rel > mid_rel
 
-    def test_summary_is_long_format(self, fitted_rel):
+    def test_summary_is_polars_long_format(self, fitted_rel):
         summary = fitted_rel.summary()
-        assert isinstance(summary, pd.DataFrame)
+        assert isinstance(summary, pl.DataFrame)
         assert "factor" in summary.columns
         assert "level" in summary.columns
         assert "relativity" in summary.columns
@@ -169,14 +176,14 @@ class TestBayesianRelativitiesOutput:
 
     def test_thin_segments_returns_low_credibility(self, fitted_rel):
         thin = fitted_rel.thin_segments(credibility_threshold=0.5)
-        assert isinstance(thin, pd.DataFrame)
+        assert isinstance(thin, pl.DataFrame)
         if len(thin) > 0:
             assert (thin["credibility_factor"] < 0.5).all()
 
     def test_thin_segments_sorted_ascending(self, fitted_rel):
         thin = fitted_rel.thin_segments(credibility_threshold=1.0)  # all segments
         if len(thin) > 1:
-            cred = thin["credibility_factor"].values
+            cred = thin["credibility_factor"].to_numpy()
             assert (cred[1:] >= cred[:-1]).all(), "thin_segments should be sorted by credibility"
 
     def test_single_factor_returns_relativity_table_not_dict(self, fitted_rel):
@@ -200,12 +207,13 @@ class TestBayesianRelativitiesOutput:
         rt_90 = rel_90.relativities(factor="veh_group")
         rt_50 = rel_50.relativities(factor="veh_group")
 
-        # Merge on level to compare
-        merged = rt_90.table[["level", "interval_width"]].merge(
-            rt_50.table[["level", "interval_width"]],
+        # Merge on level to compare interval widths
+        merged = rt_90.table.select(["level", "interval_width"]).join(
+            rt_50.table.select(["level", "interval_width"]),
             on="level",
-            suffixes=("_90", "_50"),
-        )
+            suffix="_50",
+        ).rename({"interval_width": "interval_width_90"})
+
         assert (merged["interval_width_90"] >= merged["interval_width_50"]).all(), (
             "90% HDI should be wider than 50% HDI for all levels"
         )
