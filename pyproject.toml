@@ -50,8 +50,10 @@ numpyro = [
 dev = [
     "pytest>=7.0",
     "pytest-cov",
-    "pymc>=5.0",
-    "arviz>=0.17",
+    # PyMC is NOT included here — it is too heavy for CI (C++ compilation chain,
+    # large binary deps). Tests that require PyMC are marked with @pytest.mark.pymc
+    # and skip automatically when PyMC is absent. To run the full test suite
+    # locally including PyMC model tests: pip install -e ".[dev,pymc]"
 ]
 
 [project.urls]

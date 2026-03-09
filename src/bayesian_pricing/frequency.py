@@ -203,6 +203,8 @@ class HierarchicalFrequency:
         self._model = None
         self._coords: dict = {}
         self._segment_data: Optional[pd.DataFrame] = None
+        self._claim_count_col: Optional[str] = None
+        self._exposure_col: Optional[str] = None
         self._fitted = False
 
     def fit(
@@ -357,6 +359,8 @@ class HierarchicalFrequency:
 
         self._model = model
         self._segment_data = df
+        self._claim_count_col = claim_count_col
+        self._exposure_col = exposure_col
         self._group_indices = group_indices
         self._group_levels = group_levels
 
@@ -533,8 +537,9 @@ class HierarchicalFrequency:
     def _get_observed_rates(self) -> np.ndarray:
         """Raw observed claim rates per segment (noisy, uncredibility-weighted)."""
         df = self._segment_data
-        # The claim and exposure cols are the last two numeric columns added during fit
-        # We preserve references to them via the stored DataFrame
-        claim_col = [c for c in df.columns if c not in self.group_cols][0]
-        exp_col = [c for c in df.columns if c not in self.group_cols][1]
-        return df[claim_col].values / df[exp_col].values
+        # Use the column names stored during fit() rather than guessing by position.
+        # Column-guessing is fragile when the DataFrame contains additional columns
+        # (e.g. true_rate in test fixtures, or any extra covariate the caller passes in).
+        claims = df[self._claim_count_col].to_numpy(dtype=float)
+        exposure = df[self._exposure_col].to_numpy(dtype=float)
+        return claims / exposure
