@@ -24,12 +24,16 @@ Under Normal-Normal conjugacy, partial pooling is exactly Bühlmann-Straub credi
 ## Install
 
 ```bash
+pip install "bayesian-pricing[pymc]"
+# or with uv:
 uv add "bayesian-pricing[pymc]"
 ```
 
 PyMC 5.x is an optional dependency — it is not pulled in by default because it has C++ compiler requirements on some platforms. The `[pymc]` extra handles this. For GPU-accelerated inference on large portfolios:
 
 ```bash
+pip install "bayesian-pricing[numpyro]"
+# or with uv:
 uv add "bayesian-pricing[numpyro]"
 ```
 
@@ -108,10 +112,31 @@ summary_df.write_csv("bayesian_relativities.csv")
 
 ## Severity model
 
-The severity model has the same API but uses a Gamma likelihood:
+The severity model has the same API but uses a Gamma likelihood. It expects one row per rating cell with a mean claim cost and a claim count weight.
 
 ```python
+import numpy as np
+import polars as pl
 from bayesian_pricing import HierarchicalSeverity
+from bayesian_pricing.frequency import SamplerConfig
+
+rng = np.random.default_rng(42)
+
+# Segment-level severity data: one row per vehicle group
+veh_groups = ["Supermini", "Supermini", "Sports", "Sports", "Saloon", "Saloon", "Estate"]
+claim_counts = [42, 89, 15, 31, 120, 95, 67]
+# Mean severity varies by vehicle group; sports cars cost more to repair
+base_sev = {"Supermini": 1400, "Sports": 2800, "Saloon": 1700, "Estate": 1900}
+avg_costs = [
+    base_sev[g] * rng.uniform(0.85, 1.15)
+    for g in veh_groups
+]
+
+sev_df = pl.DataFrame({
+    "veh_group":     veh_groups,
+    "avg_claim_cost": avg_costs,
+    "claim_count":   claim_counts,
+})
 
 sev_model = HierarchicalSeverity(
     group_cols=["veh_group"],          # severity varies by vehicle, not driver age
