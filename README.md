@@ -210,6 +210,11 @@ For single-factor pricing with many groups (e.g., scheme pricing), Bühlmann-Str
 
 [Partial Pooling for Thin Rating Cells](https://burning-cost.github.io/2026/03/06/bayesian-hierarchical-models-for-thin-data-pricing.html) — why every other approach fails thin segments and how hierarchical Bayesian models solve it.
 
+
+## Databricks Notebook
+
+A ready-to-run Databricks notebook benchmarking this library against standard approaches is available in [burning-cost-examples](https://github.com/burning-cost/burning-cost-examples/blob/main/notebooks/bayesian_pricing_demo.py).
+
 ## Related libraries
 
 | Library | Why it's relevant |
