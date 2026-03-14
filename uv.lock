@@ -140,10 +140,6 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
-    { name = "arviz", version = "0.23.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "arviz", version = "1.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "pymc", version = "5.25.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "pymc", version = "5.28.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
@@ -158,22 +154,28 @@ pymc = [
     { name = "pymc", version = "5.28.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "arviz", specifier = ">=0.17" },
-    { name = "arviz", marker = "extra == 'dev'", specifier = ">=0.17" },
     { name = "jax", marker = "extra == 'numpyro'", specifier = ">=0.4" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "numpyro", marker = "extra == 'numpyro'", specifier = ">=0.13" },
     { name = "pandas", specifier = ">=2.0" },
     { name = "polars", specifier = ">=0.20" },
     { name = "pyarrow", specifier = ">=23.0.1" },
-    { name = "pymc", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "pymc", marker = "extra == 'pymc'", specifier = ">=5.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest-cov", marker = "extra == 'dev'" },
 ]
 provides-extras = ["pymc", "numpyro", "dev"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.0.2" }]
 
 [[package]]
 name = "cachetools"
