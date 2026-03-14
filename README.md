@@ -214,7 +214,7 @@ For single-factor pricing with many groups (e.g., scheme pricing), Bühlmann-Str
 
 | Library | Why it's relevant |
 |---------|------------------|
-| [credibility](https://github.com/burning-cost/credibility) | Bühlmann-Straub credibility weighting — the closed-form special case of this library under Normal-Normal conjugacy |
+| [insurance-credibility](https://github.com/burning-cost/insurance-credibility) | Bühlmann-Straub credibility weighting — the closed-form special case of this library under Normal-Normal conjugacy |
 | [insurance-interactions](https://github.com/burning-cost/insurance-interactions) | Automated detection of missing GLM interactions — the complementary question to thin-cell regularisation |
 | [insurance-datasets](https://github.com/burning-cost/insurance-datasets) | Synthetic UK motor and home datasets with known DGPs — useful for validating that the model recovers true parameters |
 | [insurance-monitoring](https://github.com/burning-cost/insurance-monitoring) | Model monitoring: PSI and A/E drift detection for tracking when the deployed model needs a refit |
