@@ -246,3 +246,12 @@ Run `notebooks/benchmark.py` on Databricks to reproduce.
 3. Ohlsson, E. (2008). Combining generalised linear models and credibility models. *Scandinavian Actuarial Journal*.
 4. Krapu et al. (2023). Flexible hierarchical risk modeling for large insurance data via NumPyro. *arXiv:2312.07432*.
 5. Twiecki, T. (2017). Why hierarchical models are awesome, tricky, and Bayesian. twiecki.io.
+
+## Related Libraries
+
+| Library | What it does |
+|---------|-------------|
+| [insurance-spatial](https://github.com/burning-cost/insurance-spatial) | BYM2 spatial territory ratemaking — applies the same partial-pooling logic to geographic factors via ICAR structure |
+| [insurance-credibility](https://github.com/burning-cost/insurance-credibility) | Bühlmann-Straub credibility — the closed-form special case of this library under Normal-Normal conjugacy |
+| [insurance-thin-data](https://github.com/burning-cost/insurance-thin-data) | Transfer learning for sparse segments — complementary approach when source-target transfer is more appropriate than hierarchical pooling |
+
