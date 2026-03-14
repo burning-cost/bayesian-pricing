@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "bayesian-pricing"
+abstract: >
+  Hierarchical Bayesian models for insurance pricing using PyMC 5.
+  Handles thin-data segments through partial pooling, produces credibility
+  factors compatible with actuarial sign-off, and quantifies parameter
+  uncertainty for UK non-life pricing teams.
+authors:
+  - name: "Burning Cost"
+    website: "https://burning-cost.github.io"
+repository-code: "https://github.com/burning-cost/bayesian-pricing"
+license: MIT
+keywords:
+  - insurance-pricing
+  - actuarial
+  - bayesian
+  - hierarchical-models
+  - credibility
+  - pymc
+  - thin-data
+  - uncertainty-quantification
