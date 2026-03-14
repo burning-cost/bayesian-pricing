@@ -1,25 +1,48 @@
 # bayesian-pricing
 
-[![Tests](https://github.com/burning-cost/bayesian-pricing/actions/workflows/tests.yml/badge.svg)](https://github.com/burning-cost/bayesian-pricing/actions/workflows/tests.yml)
 [![PyPI](https://img.shields.io/pypi/v/bayesian-pricing)](https://pypi.org/project/bayesian-pricing/)
-![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+[![Python](https://img.shields.io/pypi/pyversions/bayesian-pricing)](https://pypi.org/project/bayesian-pricing/)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)]()
+[![License](https://img.shields.io/badge/license-BSD--3-blue)]()
 
-Hierarchical Bayesian models for insurance pricing thin-data segments.
+Hierarchical Bayesian models for insurance pricing thin-data segments — when your rating grid has more cells than your book has claims, partial pooling gives you credible estimates where every other method gives you noise or nothing.
+
+---
+
+## Why bother
+
+Benchmarked against raw segment estimates (observed claims / exposure, no shrinkage) on synthetic UK motor data with a known DGP: 20 occupation classes crossed with 3 vehicle groups (60 rating cells), ranging from 20 to 800 policy-years of exposure.
+
+| Segment type | RMSE — raw estimates | RMSE — Bayesian | Improvement |
+|---|---|---|---|
+| Thin occupations (20-50 py) | Higher | Lower | Typically 20-40% |
+| Thick occupations (300-800 py) | Lower | Comparable | Small or neutral |
+| All segments combined | — | — | Typically 10-25% |
+
+RMSE is measured against the known DGP ground truth. Thin cells see the largest improvement because partial pooling replaces noise-dominated raw estimates with a data-weighted blend of the cell mean and the grand mean. Thick cells are largely unaffected — their credibility factor approaches 1.
+
+---
+
+[Run on Databricks](https://github.com/burning-cost/burning-cost-examples/blob/main/notebooks/01_hierarchical_frequency_demo.py)
+
+---
 
 ## The problem
 
-UK personal lines rating operates on multi-dimensional grids. A typical motor model has driver age × NCD × vehicle group × postcode area × occupation. That is potentially 4.5 million rating cells. With 1 million policies, most cells are either empty or contain fewer than 30 observations.
+UK personal lines rating operates on multi-dimensional grids. A typical motor model has driver age x NCD x vehicle group x postcode area x occupation. That is potentially 4.5 million rating cells. With 1 million policies, most cells are either empty or contain fewer than 30 observations.
 
 Standard approaches all fail at thin cells:
 
 - **Saturated GLM**: one coefficient per cell. Overfits noise. A cell with 3 claims gets a relativity of 3/expected, which is meaningless.
-- **Main-effects GLM**: forces multiplicativity. A young driver in a sports car has a rate exactly equal to young-driver-relativity × sports-car-relativity. Reality is super-multiplicative and the model cannot detect it.
+- **Main-effects GLM**: forces multiplicativity. A young driver in a sports car has a rate exactly equal to young-driver-relativity x sports-car-relativity. Reality is super-multiplicative and the model cannot detect it.
 - **Ridge/LASSO GLM**: uniform regularisation regardless of exposure. A cell with 5,000 policy-years gets the same shrinkage as one with 20 policy-years. Wrong.
 - **GBM with min_data_in_leaf**: refuses to split on thin cells. Cannot borrow strength from related cells. No calibrated uncertainty.
 
 The correct answer is **partial pooling**: thin segments borrow strength from related segments via a shared population distribution. The degree of borrowing is data-driven — determined by the ratio of within-segment sampling noise to between-segment signal variance. This is the Bayesian posterior.
 
 Under Normal-Normal conjugacy, partial pooling is exactly Bühlmann-Straub credibility. This library generalises it to Poisson (frequency) and Gamma (severity) likelihoods, with multiple crossed random effects.
+
+---
 
 ## Install
 
@@ -36,6 +59,8 @@ pip install "bayesian-pricing[numpyro]"
 # or with uv:
 uv add "bayesian-pricing[numpyro]"
 ```
+
+---
 
 ## Usage
 
@@ -76,7 +101,7 @@ preds = model.predict()
 print(preds)
 #   veh_group age_band      mean      p5       p50      p95  credibility_factor
 #   Supermini    17-21    0.1234  0.0812   0.1201   0.1731           0.38
-#   Sports       17-21    0.1891  0.1102   0.1845   0.2881           0.21  ← thin
+#   Sports       17-21    0.1891  0.1102   0.1845   0.2881           0.21  <- thin
 # ...
 
 # Variance components: how much does each factor drive frequency?
@@ -103,7 +128,7 @@ print(veh_table.table)
 thin = rel.thin_segments(credibility_threshold=0.3)
 print(thin)
 # factor    level    credibility_factor    relativity
-# veh_group Sports-17-21          0.18         1.84   ← sparse cell, wide CI
+# veh_group Sports-17-21          0.18         1.84   <- sparse cell, wide CI
 
 # Export for Excel / rate system import
 summary_df = rel.summary()  # long format: factor, level, relativity, CI, credibility
@@ -175,10 +200,32 @@ ppc = posterior_predictive_check(model, claim_count_col="claims")
 | Method | When to use | Speed | Accuracy |
 |---|---|---|---|
 | `SamplerConfig(method="pathfinder")` | Model development, prior sensitivity | Minutes | Good approximation |
-| `SamplerConfig(method="nuts")` | Final production estimates | 20–60 min | Exact (asymptotically) |
+| `SamplerConfig(method="nuts")` | Final production estimates | 20-60 min | Exact (asymptotically) |
 | `SamplerConfig(nuts_sampler="numpyro")` | Large portfolios, GPU available | Fast on GPU | Exact |
 
 For portfolios with more than 50k rating cells, consider the two-stage approach: fit a GBM on the full book, extract segment-level residuals, then run the Bayesian model on the residuals. The GBM captures dense-cell signal; the Bayesian model handles thin-cell pooling.
+
+---
+
+## Performance
+
+Benchmarked against **raw segment estimates** (observed claims / exposure per cell, no shrinkage) on synthetic UK motor data with a known data-generating process: 20 occupation classes crossed with 3 vehicle groups (60 rating cells), with occupations ranging from 20 to 800 policy-years of exposure. The DGP uses crossed Normal random effects on log frequency (sigma_occupation = 0.35, sigma_veh_group = 0.25), producing a realistic mix of thin and thick cells.
+
+| Segment type | RMSE — raw | RMSE — Bayesian | Expected improvement |
+|---|---|---|---|
+| Thin occupations (20-50 py) | higher | lower | typically 20-40% |
+| Thick occupations (300-800 py) | lower | comparable | small or neutral |
+| All segments | — | — | typically 10-25% |
+
+RMSE is measured against the known DGP ground truth, not holdout — which is the right comparison when you want to assess bias rather than aggregate prediction error. Results are labelled "expected" because the exact numbers depend on the random seed and the sampler; the pattern is consistent across seeds.
+
+The shrinkage diagnostic confirms the theoretical prediction: credibility factors are strongly positively correlated with log(occupation exposure), meaning thin occupations receive heavier shrinkage toward the grand mean than thick ones — automatically, without any manual specification of which segments are reliable.
+
+Variance component recovery: the estimated sigma parameters are expected to be in the right ballpark of the true values (0.35 and 0.25), though pathfinder VI may underestimate posterior variance slightly. Use NUTS for production rate tables.
+
+Run `notebooks/benchmark.py` on Databricks to reproduce.
+
+---
 
 ## Relationship to Bühlmann-Straub credibility
 
@@ -194,6 +241,8 @@ The Bühlmann-Straub credibility premium is the exact posterior mean of a hierar
 
 For single-factor pricing with many groups (e.g., scheme pricing), Bühlmann-Straub is computationally trivial and entirely adequate. Use this library when you need multiple crossed random effects, non-Normal likelihoods, or full posterior uncertainty.
 
+---
+
 ## Design decisions
 
 **Non-centered parameterisation throughout.** The centered version (`u_i ~ Normal(0, sigma)`) creates funnel geometry in the posterior when sigma is small — which is exactly the case for well-regularised insurance models. HMC cannot traverse the funnel efficiently. The non-centered version decouples the raw offsets from the scale and eliminates this problem. See Twiecki (2017) for the clearest exposition.
@@ -206,9 +255,13 @@ For single-factor pricing with many groups (e.g., scheme pricing), Bühlmann-Str
 
 **PyMC optional.** The library parses and validates data without PyMC. Tests for the data layer run in CI without it. This makes the library usable in environments where PyMC is hard to install.
 
+---
+
 ## Read more
 
 [Partial Pooling for Thin Rating Cells](https://burning-cost.github.io/2026/03/06/bayesian-hierarchical-models-for-thin-data-pricing.html) — why every other approach fails thin segments and how hierarchical Bayesian models solve it.
+
+---
 
 ## Related libraries
 
@@ -218,40 +271,17 @@ For single-factor pricing with many groups (e.g., scheme pricing), Bühlmann-Str
 | [insurance-interactions](https://github.com/burning-cost/insurance-interactions) | Automated detection of missing GLM interactions — the complementary question to thin-cell regularisation |
 | [insurance-datasets](https://github.com/burning-cost/insurance-datasets) | Synthetic UK motor and home datasets with known DGPs — useful for validating that the model recovers true parameters |
 | [insurance-monitoring](https://github.com/burning-cost/insurance-monitoring) | Model monitoring: PSI and A/E drift detection for tracking when the deployed model needs a refit |
+| [insurance-spatial](https://github.com/burning-cost/insurance-spatial) | BYM2 spatial territory ratemaking — applies the same partial-pooling logic to geographic factors via ICAR structure |
+| [insurance-thin-data](https://github.com/burning-cost/insurance-thin-data) | Transfer learning for sparse segments — complementary approach when source-target transfer is more appropriate than hierarchical pooling |
 
-[All Burning Cost libraries →](https://burning-cost.github.io)
+[All Burning Cost libraries](https://burning-cost.github.io)
 
-## Performance
-
-Benchmarked against **raw segment estimates** (observed claims / exposure per cell, no shrinkage) on synthetic UK motor data with a known data-generating process: 20 occupation classes crossed with 3 vehicle groups (60 rating cells), with occupations ranging from 20 to 800 policy-years of exposure. The DGP uses crossed Normal random effects on log frequency (sigma_occupation = 0.35, sigma_veh_group = 0.25), producing a realistic mix of thin and thick cells.
-
-| Segment type | RMSE — raw | RMSE — Bayesian | Expected improvement |
-|---|---|---|---|
-| Thin occupations (20–50 py) | higher | lower | typically 20–40% |
-| Thick occupations (300–800 py) | lower | comparable | small or neutral |
-| All segments | — | — | typically 10–25% |
-
-RMSE is measured against the known DGP ground truth, not holdout — which is the right comparison when you want to assess bias rather than aggregate prediction error. Results are labelled "expected" because the exact numbers depend on the random seed and the sampler; the pattern is consistent across seeds.
-
-The shrinkage diagnostic confirms the theoretical prediction: credibility factors are strongly positively correlated with log(occupation exposure), meaning thin occupations receive heavier shrinkage toward the grand mean than thick ones — automatically, without any manual specification of which segments are reliable.
-
-Variance component recovery: the estimated sigma parameters are expected to be in the right ballpark of the true values (0.35 and 0.25), though pathfinder VI may underestimate posterior variance slightly. Use NUTS for production rate tables.
-
-Run `notebooks/benchmark.py` on Databricks to reproduce.
+---
 
 ## References
 
-1. Bühlmann, H. (1967). Experience rating and credibility. *ASTIN Bulletin*, 4(3), 199–207.
+1. Bühlmann, H. (1967). Experience rating and credibility. *ASTIN Bulletin*, 4(3), 199-207.
 2. Gelman et al. (2013). *Bayesian Data Analysis*, 3rd ed. Chapter 5.
 3. Ohlsson, E. (2008). Combining generalised linear models and credibility models. *Scandinavian Actuarial Journal*.
 4. Krapu et al. (2023). Flexible hierarchical risk modeling for large insurance data via NumPyro. *arXiv:2312.07432*.
 5. Twiecki, T. (2017). Why hierarchical models are awesome, tricky, and Bayesian. twiecki.io.
-
-## Related Libraries
-
-| Library | What it does |
-|---------|-------------|
-| [insurance-spatial](https://github.com/burning-cost/insurance-spatial) | BYM2 spatial territory ratemaking — applies the same partial-pooling logic to geographic factors via ICAR structure |
-| [insurance-credibility](https://github.com/burning-cost/insurance-credibility) | Bühlmann-Straub credibility — the closed-form special case of this library under Normal-Normal conjugacy |
-| [insurance-thin-data](https://github.com/burning-cost/insurance-thin-data) | Transfer learning for sparse segments — complementary approach when source-target transfer is more appropriate than hierarchical pooling |
-
