@@ -45,7 +45,7 @@ from bayesian_pricing.severity import HierarchicalSeverity
 from bayesian_pricing.relativities import BayesianRelativities
 from bayesian_pricing.diagnostics import convergence_summary, posterior_predictive_check
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __all__ = [
     "HierarchicalFrequency",
     "HierarchicalSeverity",
