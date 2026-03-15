@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bayesian-pricing"
-version = "0.2.1"
+version = "0.2.2"
 description = "Hierarchical Bayesian models for insurance pricing thin-data segments"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -19,6 +19,8 @@ keywords = [
     "hierarchical",
     "credibility",
     "actuarial",
+    "UK",
+    "personal lines",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -59,6 +61,8 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/burning-cost/bayesian-pricing"
 Repository = "https://github.com/burning-cost/bayesian-pricing"
+"Bug Tracker" = "https://github.com/burning-cost/bayesian-pricing/issues"
+Documentation = "https://github.com/burning-cost/bayesian-pricing#readme"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bayesian_pricing"]
