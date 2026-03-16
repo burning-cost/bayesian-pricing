@@ -44,14 +44,16 @@ class RelativityTable:
         factor: The grouping column name (e.g., "veh_group").
         levels: List of levels in the factor.
         table: Polars DataFrame with columns: level, relativity, lower, upper,
-            credibility_factor, interval_width.
+            uncertainty_reduction, interval_width.
 
-    The credibility_factor tells you how data-dominated each level is:
-        0.0 = fully pooled to portfolio mean (estimate is 1.0 relativity)
-        1.0 = trusts own experience completely (like a fixed-effects GLM)
-        0.6 = weighted blend: 60% own data, 40% portfolio mean
+    The uncertainty_reduction column measures how much the posterior has reduced
+    uncertainty relative to the prior: 1 - posterior_std / prior_rel_std. A value
+    near 1.0 means the data has largely eliminated prior uncertainty (thick segment).
+    A value near 0.0 means posterior uncertainty is still close to prior uncertainty
+    (thin segment, minimal data influence). This is distinct from the B-S credibility
+    factor Z -- it measures uncertainty reduction, not the mixing weight on own data.
 
-    Levels with credibility_factor < 0.3 have wide credible intervals and
+    Levels with uncertainty_reduction < 0.3 have wide credible intervals and
     should be treated with caution. They should not drive large rate changes.
     """
 
@@ -162,8 +164,11 @@ class BayesianRelativities:
         point_estimate = np.median(rel_samples, axis=0)
         hdi_lower, hdi_upper = self._compute_hdi(rel_samples)
 
-        # Credibility factor heuristic: compare posterior uncertainty to prior uncertainty.
-        # Low posterior std relative to prior std -> high credibility (less uncertain).
+        # Uncertainty reduction: compare posterior uncertainty to prior uncertainty.
+        # 1 - posterior_std / prior_rel_std. Near 1 = data has resolved uncertainty (thick
+        # segment). Near 0 = posterior still similar to prior (thin, heavily pooled segment).
+        # Note: this is NOT the same as the B-S credibility Z from predict(), which measures
+        # the shrinkage fraction (posterior_mean - portfolio_mean) / (observed - portfolio_mean).
         prior_std = np.ones(len(levels)) * self._model.variance_prior_sigma
         posterior_std = rel_samples.std(axis=0)
         prior_rel_std = np.exp(prior_std) - 1
@@ -177,21 +182,26 @@ class BayesianRelativities:
             "relativity": point_estimate.tolist(),
             lower_col: hdi_lower.tolist(),
             upper_col: hdi_upper.tolist(),
-            "credibility_factor": credibility.tolist(),
+            "uncertainty_reduction": credibility.tolist(),
             "interval_width": (hdi_upper - hdi_lower).tolist(),
         }).sort("relativity", descending=True)
 
         return RelativityTable(factor=col, levels=levels, table=table)
 
     def credibility_factors(self) -> "pl.DataFrame":
-        """Return credibility factors for all segments across all factors.
+        """Return uncertainty_reduction for all segments across all factors.
 
-        The credibility factor answers: "what fraction of this segment's estimate
-        comes from its own experience vs the portfolio mean?" This is the Bayesian
-        equivalent of Z_j = w_j / (w_j + K) in Bühlmann-Straub.
+        The uncertainty_reduction column measures how much the posterior has reduced
+        uncertainty relative to the prior: 1 - posterior_std / prior_rel_std.
+        A value near 1.0 means the data has largely eliminated prior uncertainty.
+        A value near 0.0 means the segment is thin and heavily pooled.
+
+        Note: this is distinct from the B-S credibility factor Z returned by
+        predict(). Use predict() credibility_factor to understand shrinkage;
+        use this method to understand how data-dominated each segment is.
 
         Returns:
-            Polars DataFrame with factor, level, credibility_factor, and relativity columns.
+            Polars DataFrame with factor, level, uncertainty_reduction, and relativity columns.
         """
         import polars as pl
 
@@ -202,7 +212,7 @@ class BayesianRelativities:
                 rows.append({
                     "factor": col,
                     "level": row["level"],
-                    "credibility_factor": row["credibility_factor"],
+                    "uncertainty_reduction": row["uncertainty_reduction"],
                     "relativity": row["relativity"],
                 })
         return pl.DataFrame(rows)
@@ -215,22 +225,21 @@ class BayesianRelativities:
         The credible intervals for these segments will be wide.
 
         Practical use: flag thin segments in the rate table for underwriter review.
-        A segment with credibility_factor = 0.1 should not drive a large rate change
-        even if the posterior median relativity differs from 1.0 significantly.
+        A segment with uncertainty_reduction = 0.1 should not drive a large rate
+        change even if the posterior median relativity differs from 1.0 significantly.
 
         Args:
-            credibility_threshold: Segments with credibility_factor below this
-                value are returned. Default 0.3 (meaning less than 30% of the
-                estimate comes from own experience).
+            credibility_threshold: Segments with uncertainty_reduction below this
+                value are returned. Default 0.3.
 
         Returns:
-            Polars DataFrame with factor, level, credibility_factor, and relativity.
+            Polars DataFrame with factor, level, uncertainty_reduction, and relativity.
         """
         creds = self.credibility_factors()
         return (
             creds
-            .filter(creds["credibility_factor"] < credibility_threshold)
-            .sort("credibility_factor")
+            .filter(creds["uncertainty_reduction"] < credibility_threshold)
+            .sort("uncertainty_reduction")
         )
 
     def summary(self) -> "pl.DataFrame":

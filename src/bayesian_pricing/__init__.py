@@ -37,10 +37,10 @@ Usage::
 
     rel = BayesianRelativities(freq_model)
     print(rel.relativities())          # Polars DataFrame with posterior median + credible interval
-    print(rel.credibility_factors())   # How much weight each segment puts on own data
+    print(rel.credibility_factors())   # Uncertainty reduction per segment (how data-dominated each level is)
 """
 
-from bayesian_pricing.frequency import HierarchicalFrequency
+from bayesian_pricing.frequency import HierarchicalFrequency, SamplerConfig
 from bayesian_pricing.severity import HierarchicalSeverity
 from bayesian_pricing.relativities import BayesianRelativities
 from bayesian_pricing.diagnostics import convergence_summary, posterior_predictive_check
@@ -50,6 +50,7 @@ __all__ = [
     "HierarchicalFrequency",
     "HierarchicalSeverity",
     "BayesianRelativities",
+    "SamplerConfig",
     "convergence_summary",
     "posterior_predictive_check",
 ]

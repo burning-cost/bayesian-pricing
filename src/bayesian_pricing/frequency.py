@@ -259,8 +259,7 @@ class HierarchicalFrequency:
             group_indices[col] = idx
             group_levels[col] = levels
 
-        # Build interaction indices
-        interaction_indices: dict[tuple[str, str], np.ndarray] = {}
+        # Validate interaction pairs reference known columns
         for col_a, col_b in self.interaction_pairs:
             if col_a not in self.group_cols or col_b not in self.group_cols:
                 raise ValueError(
@@ -510,7 +509,11 @@ class HierarchicalFrequency:
             hdi_prob=0.94,
         )
 
-        # Add human interpretation column
+        # Add human interpretation column.
+        # typical_relativity_spread = exp(sigma) - 1 is the approximate coefficient
+        # of variation of the lognormal random effect: for a segment at mu + sigma,
+        # the relativity is exp(sigma), so exp(sigma) - 1 is the fractional spread
+        # above 1.0. Provides an intuitive %-spread for reviewers.
         summary_pd["typical_relativity_spread"] = np.exp(summary_pd["mean"]) - 1
 
         # Convert to Polars, bringing the index (parameter names) in as a column

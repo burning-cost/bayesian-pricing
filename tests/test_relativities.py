@@ -106,7 +106,7 @@ class TestBayesianRelativitiesOutput:
     def test_relativity_table_has_required_columns(self, fitted_rel):
         rt = fitted_rel.relativities(factor="veh_group")
         required_cols = {"level", "relativity", "lower_90pct", "upper_90pct",
-                         "credibility_factor", "interval_width"}
+                         "uncertainty_reduction", "interval_width"}
         assert required_cols.issubset(set(rt.table.columns))
 
     def test_relativity_table_is_polars(self, fitted_rel):
@@ -128,8 +128,8 @@ class TestBayesianRelativitiesOutput:
     def test_credibility_factors_bounded(self, fitted_rel):
         cred = fitted_rel.credibility_factors()
         assert isinstance(cred, pl.DataFrame)
-        assert (cred["credibility_factor"] >= 0).all()
-        assert (cred["credibility_factor"] <= 1).all()
+        assert (cred["uncertainty_reduction"] >= 0).all()
+        assert (cred["uncertainty_reduction"] <= 1).all()
 
     def test_base_level_normalisation(self, freq_segment_data):
         """With base_level={"veh_group": "A"}, group A should have relativity 1.0."""
@@ -178,13 +178,13 @@ class TestBayesianRelativitiesOutput:
         thin = fitted_rel.thin_segments(credibility_threshold=0.5)
         assert isinstance(thin, pl.DataFrame)
         if len(thin) > 0:
-            assert (thin["credibility_factor"] < 0.5).all()
+            assert (thin["uncertainty_reduction"] < 0.5).all()
 
     def test_thin_segments_sorted_ascending(self, fitted_rel):
         thin = fitted_rel.thin_segments(credibility_threshold=1.0)  # all segments
         if len(thin) > 1:
-            cred = thin["credibility_factor"].to_numpy()
-            assert (cred[1:] >= cred[:-1]).all(), "thin_segments should be sorted by credibility"
+            cred = thin["uncertainty_reduction"].to_numpy()
+            assert (cred[1:] >= cred[:-1]).all(), "thin_segments should be sorted by uncertainty_reduction"
 
     def test_single_factor_returns_relativity_table_not_dict(self, fitted_rel):
         result = fitted_rel.relativities(factor="veh_group")

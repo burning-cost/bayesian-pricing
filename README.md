@@ -3,7 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/bayesian-pricing)](https://pypi.org/project/bayesian-pricing/)
 [![Python](https://img.shields.io/pypi/pyversions/bayesian-pricing)](https://pypi.org/project/bayesian-pricing/)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen)]()
-[![License](https://img.shields.io/badge/license-BSD--3-blue)]()
+[![License](https://img.shields.io/badge/license-MIT-green)]()
 
 Hierarchical Bayesian models for insurance pricing thin-data segments — when your rating grid has more cells than your book has claims, partial pooling gives you credible estimates where every other method gives you noise or nothing.
 
@@ -99,6 +99,7 @@ model.fit(df, claim_count_col="claims", exposure_col="exposure", sampler_config=
 # Posterior predictive means for each segment
 preds = model.predict()
 print(preds)
+# Output is illustrative — exact values depend on your data and sampler seed:
 #   veh_group age_band      mean      p5       p50      p95  credibility_factor
 #   Supermini    17-21    0.1234  0.0812   0.1201   0.1731           0.38
 #   Sports       17-21    0.1891  0.1102   0.1845   0.2881           0.21  <- thin
@@ -119,19 +120,19 @@ tables = rel.relativities()
 # Single factor in rate-table format
 veh_table = rel.relativities(factor="veh_group")
 print(veh_table.table)
-#   level      relativity  lower_90pct  upper_90pct  credibility_factor  interval_width
-#   Sports          1.524        1.234        1.891           0.71               0.657
-#   Saloon          1.000        0.921        1.082           0.94               0.161
-#   Supermini       0.819        0.764        0.881           0.89               0.117
+#   level      relativity  lower_90pct  upper_90pct  uncertainty_reduction  interval_width
+#   Sports          1.524        1.234        1.891                 0.71               0.657
+#   Saloon          1.000        0.921        1.082                 0.94               0.161
+#   Supermini       0.819        0.764        0.881                 0.89               0.117
 
 # Identify thin segments that need manual review
 thin = rel.thin_segments(credibility_threshold=0.3)
 print(thin)
-# factor    level    credibility_factor    relativity
-# veh_group Sports-17-21          0.18         1.84   <- sparse cell, wide CI
+# factor    level    uncertainty_reduction    relativity
+# veh_group Sports-17-21          0.18          1.84   <- sparse cell, wide CI
 
 # Export for Excel / rate system import
-summary_df = rel.summary()  # long format: factor, level, relativity, CI, credibility
+summary_df = rel.summary()  # long format: factor, level, relativity, CI, uncertainty_reduction
 summary_df.write_csv("bayesian_relativities.csv")
 ```
 

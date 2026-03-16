@@ -352,7 +352,7 @@ veh_table["recovery_error_pct"] = (
 )
 print("Vehicle group relativity recovery:")
 display(veh_table[["level", "true_relativity", "relativity", "lower_90pct", "upper_90pct",
-                    "recovery_error_pct", "credibility_factor"]].round(3))
+                    "recovery_error_pct", "uncertainty_reduction"]].round(3))
 
 # COMMAND ----------
 
@@ -554,8 +554,8 @@ display(sev_rt.table)
 freq_rt = rel.relativities(factor="veh_group")
 
 # Merge frequency and severity relativities
-pp_table = freq_rt.table[["level", "relativity", "credibility_factor"]].merge(
-    sev_rt.table[["level", "relativity", "credibility_factor"]],
+pp_table = freq_rt.table[["level", "relativity", "uncertainty_reduction"]].rename({"uncertainty_reduction": "uncertainty_reduction_freq"}).merge(
+    sev_rt.table[["level", "relativity", "uncertainty_reduction"]].rename({"uncertainty_reduction": "uncertainty_reduction_sev"}),
     on="level",
     suffixes=("_freq", "_sev"),
 )

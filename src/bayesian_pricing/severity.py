@@ -274,9 +274,11 @@ class HierarchicalSeverity:
             mu_severity = pm.math.exp(mu_log)
 
             # Gamma shape: controls within-segment CV.
-            # HalfNormal(2) allows shape from near-0 (high dispersion) to ~6 (low CV).
-            # UK attritional motor claims typically have shape ~0.25-0.7.
-            gamma_shape = pm.HalfNormal("gamma_shape", sigma=2.0)
+            # UK attritional motor severity has CV ~1.5-2.5, implying shape ~0.16-0.44.
+            # HalfNormal(sigma=0.5) has median ~0.34, placing most prior mass in the
+            # attritional motor range. The previous default of sigma=2 put ~83% of
+            # mass above shape=0.44, systematically underestimating dispersion.
+            gamma_shape = pm.HalfNormal("gamma_shape", sigma=0.5)
 
             # Gamma parameterisation: mean = mu, concentration = gamma_shape
             # Each segment observation is a sample average over `weights` claims.
