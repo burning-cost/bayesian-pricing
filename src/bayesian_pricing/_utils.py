@@ -36,8 +36,35 @@ def _to_pandas(data: DataFrameLike) -> pd.DataFrame:
     )
 
 
+def _check_numpy_for_pymc() -> None:
+    """Raise a clear RuntimeError if numpy is too old for PyMC 5.8+.
+
+    PyMC 5.8 and later depend on pytensor 2.18+ which requires numpy>=2.0.
+    Environments with pinned numpy (e.g. Databricks serverless, some conda
+    setups) will install bayesian-pricing[pymc] successfully but fail at import
+    time with an opaque AttributeError. This check surfaces the issue clearly.
+    """
+    numpy_version = tuple(int(x) for x in np.__version__.split(".")[:2])
+    if numpy_version < (2, 0):
+        raise RuntimeError(
+            f"PyMC 5.8+ requires numpy>=2.0, but numpy {np.__version__} is installed.\n\n"
+            "On most systems, upgrading numpy is straightforward:\n\n"
+            "    pip install 'numpy>=2.0'\n\n"
+            "On Databricks serverless, numpy is locked at the system level and cannot\n"
+            "be upgraded. To use bayesian-pricing on Databricks serverless, use a\n"
+            "Databricks ML Runtime cluster (14.3+) which ships with numpy 2.x, or\n"
+            "install the NumPyro backend instead:\n\n"
+            "    pip install 'bayesian-pricing[numpyro]'\n\n"
+            "See: https://github.com/burning-cost/bayesian-pricing#installation"
+        )
+
+
 def _check_pymc() -> None:
-    """Raise a helpful ImportError if PyMC is not installed."""
+    """Raise a helpful error if PyMC is not installed or incompatible."""
+    # Check numpy version first — the PyMC import itself will fail with a
+    # confusing AttributeError if numpy < 2.0, so we pre-empt it here.
+    _check_numpy_for_pymc()
+
     try:
         import pymc  # noqa: F401
     except ImportError:
@@ -45,11 +72,11 @@ def _check_pymc() -> None:
             "PyMC is required for fitting Bayesian models. Install it with:\n\n"
             "    uv add pymc\n\n"
             "Or install this package with the pymc extras:\n\n"
-            "    uv add bayesian-pricing[pymc]\n\n"
-            "PyMC requires C++ compiler tools on some platforms. See:\n"
-            "    https://www.pymc.io/projects/docs/en/stable/installation.html\n\n"
+            "    uv add 'bayesian-pricing[pymc]'\n\n"
+            "PyMC requires numpy>=2.0. See the installation notes above if\n"
+            "you are in an environment with a locked numpy version.\n\n"
             "For GPU acceleration (large portfolios), install with NumPyro backend:\n"
-            "    uv add bayesian-pricing[numpyro]"
+            "    uv add 'bayesian-pricing[numpyro]'"
         )
 
 

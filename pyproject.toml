@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bayesian-pricing"
-version = "0.2.2"
+version = "0.2.3"
 description = "Hierarchical Bayesian models for insurance pricing thin-data segments"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -44,7 +44,8 @@ dependencies = [
 
 [project.optional-dependencies]
 pymc = [
-    "pymc>=5.0",
+    "numpy>=2.0",    # PyMC 5.8+ / pytensor 2.18+ require numpy 2.x
+    "pymc>=5.8",
 ]
 numpyro = [
     "numpyro>=0.13",
