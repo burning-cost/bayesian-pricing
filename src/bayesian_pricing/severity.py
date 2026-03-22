@@ -179,6 +179,16 @@ class HierarchicalSeverity:
         _validate_columns_present(df, required_cols)
         _validate_positive(df[severity_col], severity_col)
 
+        if weight_col and weight_col in df.columns:
+            weights_check = df[weight_col].to_numpy(dtype=float)
+            if np.any(weights_check <= 0):
+                n_bad = int(np.sum(weights_check <= 0))
+                raise ValueError(
+                    f"weight_col '{weight_col}' contains {n_bad} zero or negative "
+                    f"value(s). Weights must be strictly positive claim counts. "
+                    f"Remove or exclude zero-claim segments before fitting."
+                )
+
         _check_pymc()
         import pymc as pm
 

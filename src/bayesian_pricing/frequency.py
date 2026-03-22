@@ -236,6 +236,15 @@ class HierarchicalFrequency:
         _validate_columns_present(df, self.group_cols + [claim_count_col, exposure_col])
         _validate_positive(df[exposure_col], exposure_col)
 
+        # Validate interaction pairs before _check_pymc() so users get
+        # ValueError rather than ImportError for bad pair specifications.
+        for col_a, col_b in self.interaction_pairs:
+            if col_a not in self.group_cols or col_b not in self.group_cols:
+                raise ValueError(
+                    f"Interaction pair ({col_a!r}, {col_b!r}) references a column "
+                    f"not in group_cols: {self.group_cols}"
+                )
+
         _check_pymc()
         import pymc as pm
 
@@ -258,14 +267,6 @@ class HierarchicalFrequency:
             idx, levels = _segment_index(df[col])
             group_indices[col] = idx
             group_levels[col] = levels
-
-        # Validate interaction pairs reference known columns
-        for col_a, col_b in self.interaction_pairs:
-            if col_a not in self.group_cols or col_b not in self.group_cols:
-                raise ValueError(
-                    f"Interaction pair ({col_a!r}, {col_b!r}) references a column "
-                    f"not in group_cols: {self.group_cols}"
-                )
 
         # Coords for PyMC named dimensions
         coords = {}
@@ -420,8 +421,10 @@ class HierarchicalFrequency:
             - The group columns from your training data
             - mean: posterior mean claim rate (use this as your point estimate)
             - The quantiles you specified (default: p5, p50, p95)
-            - credibility_factor: how much this segment was pulled toward the portfolio
-              mean (0 = fully pooled to mean, 1 = trusts own data completely)
+            - posterior_shrinkage_ratio: measures how far the posterior mean sits between
+              the portfolio mean (0) and the raw observed rate (1). This is NOT the
+              Bühlmann-Straub credibility factor Z; it is a post-hoc ratio. Use
+              variance_components() for the B-S-analogous variance decomposition.
 
         Args:
             quantiles: Posterior quantiles to return. Default gives 90% credible
@@ -467,15 +470,23 @@ class HierarchicalFrequency:
         for q in quantiles:
             result_dict[f"p{int(q * 100)}"] = np.quantile(rate_samples, q, axis=0).tolist()
 
-        # Credibility factor: Z = (posterior mean - portfolio mean) / (observed rate - portfolio mean)
-        # Undefined when observed rate == portfolio mean; clamp to [0, 1].
+        # posterior_shrinkage_ratio: how far the posterior mean sits between the
+        # portfolio mean (0) and the raw observed rate (1).
+        #
+        # This is NOT the Bühlmann-Straub credibility factor Z. The B-S Z is derived
+        # analytically as n_i / (n_i + k) where k = sigma^2 / tau^2 (ratio of
+        # within-segment variance to between-segment variance). This column instead
+        # measures posterior shrinkage post-hoc:
+        #     (posterior_mean - portfolio_mean) / (observed_rate - portfolio_mean)
+        # It is clipped to [0, 1] and set to 0.5 when the denominator is near zero.
+        # Use variance_components() for the B-S-analogous tau^2 estimates.
         portfolio_mean = float(np.exp(alpha_samples.mean()))
         obs = self._get_observed_rates()
         denom = obs - portfolio_mean
         num = np.array(result_dict["mean"]) - portfolio_mean
         with np.errstate(divide="ignore", invalid="ignore"):
             z = np.where(np.abs(denom) < 1e-10, 0.5, np.clip(num / denom, 0, 1))
-        result_dict["credibility_factor"] = z.tolist()
+        result_dict["posterior_shrinkage_ratio"] = z.tolist()
 
         return pl.DataFrame(result_dict)
 

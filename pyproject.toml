@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bayesian-pricing"
-version = "0.2.3"
+version = "0.2.4"
 description = "Hierarchical Bayesian models for insurance pricing thin-data segments"
 readme = "README.md"
 requires-python = ">=3.10"
