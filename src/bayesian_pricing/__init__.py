@@ -45,7 +45,12 @@ from bayesian_pricing.severity import HierarchicalSeverity
 from bayesian_pricing.relativities import BayesianRelativities
 from bayesian_pricing.diagnostics import convergence_summary, posterior_predictive_check
 
-__version__ = "0.2.3"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("bayesian-pricing")
+except PackageNotFoundError:
+    __version__ = "0.0.0"  # not installed
 __all__ = [
     "HierarchicalFrequency",
     "HierarchicalSeverity",
