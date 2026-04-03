@@ -635,13 +635,18 @@ class TestBayesianRelativitiesExtended:
         thin = rel.thin_segments(credibility_threshold=0.0)
         assert len(thin) == 0
 
-    def test_thin_segments_threshold_one_returns_all(self, rel):
-        """With threshold=1.0, all segments should be returned."""
-        thin = rel.thin_segments(credibility_threshold=1.0)
+    def test_thin_segments_threshold_above_one_returns_all(self, rel):
+        """With threshold > 1.0, all segments (in [0,1]) should be returned.
+        
+        Using 1.01 rather than 1.0 to avoid edge case where a segment lands
+        exactly at 1.0 (possible with near-zero posterior_std) and misses the
+        strict-less-than filter.
+        """
+        thin = rel.thin_segments(credibility_threshold=1.01)
         assert len(thin) == 10  # all 10 factor-levels
 
     def test_thin_segments_sorted_ascending(self, rel):
-        thin = rel.thin_segments(credibility_threshold=1.0)
+        thin = rel.thin_segments(credibility_threshold=1.01)
         cred = thin["uncertainty_reduction"].to_numpy()
         assert (cred[:-1] <= cred[1:]).all()
 
