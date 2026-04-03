@@ -58,6 +58,7 @@ from bayesian_pricing._utils import (
     _check_pymc,
     _validate_positive,
     _validate_columns_present,
+    _validate_no_nulls_in_group_cols,
     _segment_index,
     _to_pandas,
     DataFrameLike,
@@ -188,6 +189,8 @@ class HierarchicalSeverity:
                     f"value(s). Weights must be strictly positive claim counts. "
                     f"Remove or exclude zero-claim segments before fitting."
                 )
+
+        _validate_no_nulls_in_group_cols(df, self.group_cols)
 
         _check_pymc()
         import pymc as pm

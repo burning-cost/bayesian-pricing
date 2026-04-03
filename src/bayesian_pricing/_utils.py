@@ -90,6 +90,24 @@ def _validate_columns_present(df: pd.DataFrame, cols: list[str]) -> None:
         )
 
 
+def _validate_no_nulls_in_group_cols(df: pd.DataFrame, group_cols: list[str]) -> None:
+    """Raise ValueError if any group column contains null values.
+
+    This check runs before _check_pymc() so callers without PyMC installed
+    still get a clear ValueError (not an ImportError) for null group inputs.
+    """
+    for col in group_cols:
+        if col not in df.columns:
+            continue  # _validate_columns_present handles missing columns
+        null_count = df[col].isna().sum()
+        if null_count > 0:
+            raise ValueError(
+                f"Group column '{col}' contains {null_count} null value(s). "
+                "Fill or drop null rows before fitting. "
+                "Null group labels cannot be assigned to a partial-pooling segment."
+            )
+
+
 def _validate_positive(series: pd.Series, name: str) -> None:
     """Raise ValueError if any value is non-positive."""
     if (series <= 0).any():

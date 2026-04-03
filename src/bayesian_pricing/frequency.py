@@ -49,6 +49,7 @@ from bayesian_pricing._utils import (
     _check_pymc,
     _validate_positive,
     _validate_columns_present,
+    _validate_no_nulls_in_group_cols,
     _portfolio_mean_rate,
     _segment_index,
     _to_pandas,
@@ -235,6 +236,7 @@ class HierarchicalFrequency:
 
         _validate_columns_present(df, self.group_cols + [claim_count_col, exposure_col])
         _validate_positive(df[exposure_col], exposure_col)
+        _validate_no_nulls_in_group_cols(df, self.group_cols)
 
         # Validate interaction pairs before _check_pymc() so users get
         # ValueError rather than ImportError for bad pair specifications.
